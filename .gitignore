@@ -1,0 +1,10 @@
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Secrets / local-only state
+.env
+
+# Editor/OS
+.DS_Store

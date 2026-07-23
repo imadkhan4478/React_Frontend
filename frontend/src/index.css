@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+/* Dark mode toggled via a `.dark` class on <html> (see ThemeContext), not
+   only prefers-color-scheme, so the user's toggle wins over OS setting. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --navy: #1F2D4E;
+  --navy-deep: #16223C;
+  --gold-soft: #E7D9A8;
+  --brand-soft: #EEECFC;
+  --ink: #1F2D4E;
+  --muted: #5A6478;
+  --line: #E6E8EF;
+  --surface: #FFFFFF;
+  --canvas: #F7F8FB;
+  --canvas-alt: #F0F1F5;
+  --sidebar-bg: #FFFFFF;
+  --risk: #C0392B;
+  --risk-bg: #FDECEC;
+  --watch: #B9770E;
+  --watch-bg: #FEF6E7;
+  --healthy: #1E8449;
+  --healthy-bg: #E9F7EF;
+  --info: #2E5AAC;
+  --info-bg: #EAF2FB;
+
+  --brand: #4F46E5;
+  --brand-deep: #3730A3;
+  --brand-light: #818CF8;
+  --violet: #8B5CF6;
+  --gold: #BF9000;
+}
+
+.dark {
+  --navy: #F1F3F9;
+  --navy-deep: #0B0E14;
+  --gold-soft: #8A6D2A;
+  --brand-soft: #241F3D;
+  --ink: #F1F3F9;
+  --muted: #9AA3B8;
+  --line: #2A2E3D;
+  --surface: #171A24;
+  --canvas: #0E1017;
+  --canvas-alt: #1D202C;
+  --sidebar-bg: #12141C;
+  --risk: #F27E71;
+  --risk-bg: #2A1D1D;
+  --watch: #E8AE4D;
+  --watch-bg: #2A2418;
+  --healthy: #4ADE80;
+  --healthy-bg: #1A2A21;
+  --info: #7CA6F0;
+  --info-bg: #1B2436;
+}
+
+@theme inline {
+  --color-navy: var(--navy);
+  --color-navy-deep: var(--navy-deep);
+  --color-gold-soft: var(--gold-soft);
+  --color-brand-soft: var(--brand-soft);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-surface: var(--surface);
+  --color-canvas: var(--canvas);
+  --color-canvas-alt: var(--canvas-alt);
+  --color-sidebar: var(--sidebar-bg);
+  --color-risk: var(--risk);
+  --color-risk-bg: var(--risk-bg);
+  --color-watch: var(--watch);
+  --color-watch-bg: var(--watch-bg);
+  --color-healthy: var(--healthy);
+  --color-healthy-bg: var(--healthy-bg);
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
+  --color-brand: var(--brand);
+  --color-brand-deep: var(--brand-deep);
+  --color-brand-light: var(--brand-light);
+  --color-violet: var(--violet);
+  --color-gold: var(--gold);
+
+  --font-display: 'Manrope', 'Segoe UI', system-ui, sans-serif;
+  --font-sans: 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-canvas text-ink;
+    font-family: var(--font-sans);
+  }
+}
