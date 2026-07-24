@@ -8,7 +8,7 @@ function weekLabel(i: number, totalWeeks: number): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-const WEEKS = 8
+const WEEKS = 12
 export const weeklyTrend = Array.from({ length: WEEKS }, (_, i) => ({
   week: weekLabel(i, WEEKS),
   purchase_value: Number((11 + i * 0.9 + (rng() - 0.5) * 2).toFixed(2)),
@@ -21,8 +21,8 @@ export function getWeeklyTrend() {
   return weeklyTrend
 }
 
-export function getHealth() {
-  return { level: 'watch' as const, message: 'Supply chain stable — 3 issues need attention' }
+export function getHealth(): { level: 'healthy' | 'watch' | 'risk'; message: string } {
+  return { level: 'watch', message: 'Supply chain stable — 3 issues need attention' }
 }
 
 export function getDashboardKpisRich() {
