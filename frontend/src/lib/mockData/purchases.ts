@@ -18,16 +18,19 @@ export interface PurchaseRow {
   purchase_date: Date
   required_date: Date
   status: 'Pending' | 'Completed' | 'Delayed'
+  /** Only meaningful for Delayed rows. */
+  days_overdue?: number
 }
 
 const rng = mulberry32(42)
 
 function makeRow(i: number): PurchaseRow {
-  const purchaseDate = recentDate(rng, 120)
+  const purchaseDate = recentDate(rng, 84)
   const requiredDate = new Date(purchaseDate)
   requiredDate.setDate(requiredDate.getDate() + randInt(rng, 7, 45))
   const roll = rng()
   const status: PurchaseRow['status'] = roll < 0.55 ? 'Completed' : roll < 0.8 ? 'Pending' : 'Delayed'
+  const daysOverdue = status === 'Delayed' ? randInt(rng, 2, 110) : undefined
   return {
     ref_no: `PR-${1000 + i}`,
     po_number: `PO-${5000 + i}`,
@@ -43,10 +46,11 @@ function makeRow(i: number): PurchaseRow {
     purchase_date: purchaseDate,
     required_date: requiredDate,
     status,
+    days_overdue: daysOverdue,
   }
 }
 
-const ALL_PURCHASES: PurchaseRow[] = Array.from({ length: 40 }, (_, i) => makeRow(i))
+const ALL_PURCHASES: PurchaseRow[] = Array.from({ length: 70 }, (_, i) => makeRow(i))
 
 export interface PurchaseFilters {
   status?: string[]

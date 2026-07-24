@@ -4,9 +4,29 @@ export function money(value: number): string {
   return `PKR ${Math.round(value).toLocaleString()}`
 }
 
+export function shortDate(input: string | Date): string {
+  const d = typeof input === 'string' ? new Date(input) : input
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
 export interface WeeklyPoint {
   week: string
   value: number
+}
+
+const AGING_ORDER = ['0-30 days', '31-60 days', '61-90 days', '90+ days'] as const
+
+/** Bucket a list of day counts into the standard 4 aging tiers used across
+ * the app (0-30 / 31-60 / 61-90 / 90+ days). */
+export function agingBuckets(days: number[]): { bucket: string; orders: number }[] {
+  const counts = { '0-30 days': 0, '31-60 days': 0, '61-90 days': 0, '90+ days': 0 }
+  for (const d of days) {
+    if (d <= 30) counts['0-30 days']++
+    else if (d <= 60) counts['31-60 days']++
+    else if (d <= 90) counts['61-90 days']++
+    else counts['90+ days']++
+  }
+  return AGING_ORDER.map((bucket) => ({ bucket, orders: counts[bucket] }))
 }
 
 function startOfWeek(d: Date): Date {

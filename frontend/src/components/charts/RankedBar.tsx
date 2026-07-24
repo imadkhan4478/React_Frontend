@@ -39,7 +39,7 @@ export function RankedBar({ data, category, value, height = 320, benchmark, inve
         {benchmark !== undefined && (
           <ReferenceLine x={benchmark} stroke={GOLD} strokeDasharray="4 4" label={{ value: 'target', fill: GOLD, fontSize: 11, position: 'insideTopRight' }} />
         )}
-        <Bar dataKey={value} radius={[0, 4, 4, 0]} isAnimationActive={false}>
+        <Bar dataKey={value} radius={[0, 4, 4, 0]} isAnimationActive={false} maxBarSize={40}>
           {sorted.map((d, i) => {
             const v = d[value] as number
             const fill = invertColor

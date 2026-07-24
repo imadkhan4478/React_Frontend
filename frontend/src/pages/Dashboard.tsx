@@ -1,38 +1,40 @@
 import { useState } from 'react'
-import { ArrowUpRight, Sparkles, TriangleAlert, CircleAlert, Info } from 'lucide-react'
+import { TriangleAlert, CircleAlert, Info } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { KpiCard } from '@/components/KpiCard'
+import { HeroStat } from '@/components/HeroStat'
+import { InsightsCard } from '@/components/InsightsCard'
+import { SegmentedControl } from '@/components/SegmentedControl'
 import { Card, CardContent } from '@/components/ui/card'
-import { TrendLine } from '@/components/charts/TrendLine'
 import { RankedBar } from '@/components/charts/RankedBar'
 import { Donut } from '@/components/charts/Donut'
 import { AgingBuckets } from '@/components/charts/AgingBuckets'
 import { money } from '@/lib/format'
 import { useTheme } from '@/theme/ThemeContext'
-import { BRAND, VIOLET } from '@/theme/tokens'
-import { cn } from '@/lib/utils'
 import {
   getHealth, getDashboardKpisRich, weeklyTrend, getAlerts,
   getSupplierPerformance, getStatusSplit, getAging,
 } from '@/lib/mockData/dashboard'
 
-const RANGE_OPTIONS = [4, 8, 12] as const
+const RANGE_OPTIONS = [
+  { value: '4', label: '4W' }, { value: '8', label: '8W' }, { value: '12', label: '12W' },
+] as const
 const INSIGHT_TABS = [
-  { key: 'suppliers', label: 'Suppliers' },
-  { key: 'status', label: 'Status' },
-  { key: 'aging', label: 'Aging' },
+  { value: 'suppliers', label: 'Suppliers' },
+  { value: 'status', label: 'Status' },
+  { value: 'aging', label: 'Aging' },
 ] as const
 
 const ALERT_ICON = { high: TriangleAlert, medium: CircleAlert, low: Info }
 
 export function Dashboard() {
   const { colors } = useTheme()
-  const [rangeWeeks, setRangeWeeks] = useState<(typeof RANGE_OPTIONS)[number]>(8)
-  const [insightTab, setInsightTab] = useState<(typeof INSIGHT_TABS)[number]['key']>('suppliers')
+  const [rangeWeeks, setRangeWeeks] = useState<'4' | '8' | '12'>('8')
+  const [insightTab, setInsightTab] = useState<(typeof INSIGHT_TABS)[number]['value']>('suppliers')
 
   const health = getHealth()
   const kpis = getDashboardKpisRich()
-  const trend = weeklyTrend.slice(-rangeWeeks)
+  const trend = weeklyTrend.slice(-Number(rangeWeeks))
   const alerts = getAlerts()
   const supplierPerf = getSupplierPerformance()
   const statusSplit = getStatusSplit('purchases')
@@ -56,51 +58,21 @@ export function Dashboard() {
             <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: healthColor }} />
             {health.message}
           </span>
-          <div className="inline-flex rounded-lg border border-line bg-surface p-0.5">
-            {RANGE_OPTIONS.map((w) => (
-              <button
-                key={w}
-                type="button"
-                onClick={() => setRangeWeeks(w)}
-                className={cn(
-                  'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
-                  rangeWeeks === w ? 'bg-brand text-white' : 'text-muted hover:text-ink',
-                )}
-              >
-                {w}W
-              </button>
-            ))}
-          </div>
+          <SegmentedControl options={RANGE_OPTIONS} value={rangeWeeks} onChange={setRangeWeeks} />
         </div>
       </div>
 
-      {/* Hero: purchase value + trend, unified into one spotlight card */}
-      <Card
-        className="overflow-hidden border-0 text-white shadow-lg"
-        style={{ background: `linear-gradient(135deg, ${BRAND} 0%, ${VIOLET} 100%)` }}
-      >
-        <CardContent className="p-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm font-medium text-white/70">Purchase Value</p>
-              <p className="font-display mt-1 text-4xl font-extrabold tracking-tight">
-                {money(kpis.purchaseValue.value)}
-              </p>
-              <span className="mt-3 inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-xs font-semibold">
-                <ArrowUpRight size={12} />
-                {kpis.purchaseValue.delta}
-              </span>
-            </div>
-            <Sparkles className="text-white/30" size={32} />
-          </div>
-          <div className="mt-2">
-            <TrendLine data={trend} x="week" y="purchase_value" height={200} onDark />
-          </div>
-          <p className="mt-1 text-xs text-white/60">PKR millions per week · last {rangeWeeks} weeks</p>
-        </CardContent>
-      </Card>
+      <HeroStat
+        label="Purchase Value"
+        value={money(kpis.purchaseValue.value)}
+        delta={kpis.purchaseValue.delta}
+        direction={kpis.purchaseValue.direction}
+        trendData={trend}
+        trendX="week"
+        trendY="purchase_value"
+        caption={`PKR millions per week · last ${rangeWeeks} weeks`}
+      />
 
-      {/* Secondary KPIs */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
         <KpiCard label="Avg Cycle Time" value={kpis.avgCycleTime.value} delta={kpis.avgCycleTime.delta}
           direction={kpis.avgCycleTime.direction} goodWhen={kpis.avgCycleTime.goodWhen}
@@ -117,35 +89,14 @@ export function Dashboard() {
           direction={kpis.openImports.direction} goodWhen={kpis.openImports.goodWhen} />
       </div>
 
-      {/* Insights: tabbed chart card + attention feed */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardContent className="p-5">
-            <div className="mb-4 flex items-center justify-between">
-              <p className="text-sm font-semibold text-ink">Insights</p>
-              <div className="inline-flex rounded-lg bg-canvas-alt p-0.5">
-                {INSIGHT_TABS.map((t) => (
-                  <button
-                    key={t.key}
-                    type="button"
-                    onClick={() => setInsightTab(t.key)}
-                    className={cn(
-                      'rounded-md px-3 py-1 text-xs font-medium transition-colors',
-                      insightTab === t.key ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink',
-                    )}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {insightTab === 'suppliers' && (
-              <RankedBar data={supplierPerf} category="supplier" value="on_time_pct" height={300} benchmark={85} />
-            )}
-            {insightTab === 'status' && <Donut labels={statusSplit.labels} values={statusSplit.values} height={300} />}
-            {insightTab === 'aging' && <AgingBuckets data={aging} height={300} />}
-          </CardContent>
-        </Card>
+        <InsightsCard title="Insights" tabs={INSIGHT_TABS} active={insightTab} onChange={setInsightTab} className="lg:col-span-2">
+          {insightTab === 'suppliers' && (
+            <RankedBar data={supplierPerf} category="supplier" value="on_time_pct" height={300} benchmark={85} />
+          )}
+          {insightTab === 'status' && <Donut labels={statusSplit.labels} values={statusSplit.values} height={300} />}
+          {insightTab === 'aging' && <AgingBuckets data={aging} height={300} />}
+        </InsightsCard>
 
         <Card>
           <CardContent className="p-5">

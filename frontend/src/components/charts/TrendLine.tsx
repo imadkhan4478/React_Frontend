@@ -37,6 +37,7 @@ export function TrendLine({ data, x, y, height = 300, onDark = false }: Props) {
           tick={{ fill: tickColor, fontSize: 12 }}
           axisLine={{ stroke: gridColor }}
           tickLine={false}
+          interval={Math.max(0, Math.ceil(data.length / 8) - 1)}
         />
         <YAxis tick={{ fill: tickColor, fontSize: 12 }} axisLine={false} tickLine={false} />
         <Tooltip {...(onDark ? { ...tooltipStyle, contentStyle: { ...tooltipStyle.contentStyle, background: '#1F1B4D' } } : tooltipStyle)} />
