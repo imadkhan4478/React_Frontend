@@ -1,5 +1,5 @@
 import {
-  Gauge, ShoppingCart, PackageOpen, Plane, Truck, BarChart3, MessageSquare,
+  Gauge, ShoppingCart, PackageOpen, Plane, ClipboardList, Truck, BarChart3, MessageSquare,
   type LucideIcon,
 } from 'lucide-react'
 import type { PageKey } from '@/theme/tokens'
@@ -18,6 +18,7 @@ export const PAGE_DEFS: PageDef[] = [
   { key: 'purchases', label: 'Purchases', path: '/purchases', icon: ShoppingCart },
   { key: 'inventory', label: 'Inventory', path: '/inventory', icon: PackageOpen },
   { key: 'imports', label: 'Imports', path: '/imports', icon: Plane },
+  { key: 'importsStatus', label: 'Imports Status', path: '/imports-status', icon: ClipboardList },
   { key: 'logistics', label: 'Logistics', path: '/logistics', icon: Truck },
   { key: 'reports', label: 'Reports', path: '/reports', icon: BarChart3 },
   { key: 'assistant', label: 'Assistant', path: '/assistant', icon: MessageSquare },
