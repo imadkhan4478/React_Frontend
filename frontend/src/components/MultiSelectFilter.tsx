@@ -38,7 +38,11 @@ export function MultiSelectFilter({ label, options, value, onChange }: Props) {
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-line bg-surface px-3 text-left text-sm text-ink"
+          className={cn(
+            'flex h-10 w-full items-center justify-between gap-2 rounded-lg border bg-surface px-3 text-left text-sm text-ink',
+            'transition-colors duration-150',
+            open ? 'border-brand ring-2 ring-brand/20' : 'border-line hover:border-brand-light',
+          )}
         >
           <span className="flex flex-1 flex-wrap items-center gap-1 overflow-hidden">
             {value.length === 0 ? (
@@ -47,12 +51,12 @@ export function MultiSelectFilter({ label, options, value, onChange }: Props) {
               value.map((v) => (
                 <span
                   key={v}
-                  className="flex items-center gap-1 rounded-md bg-brand-soft px-1.5 py-0.5 text-xs font-medium text-brand"
+                  className="animate-scale-in flex items-center gap-1 rounded-md bg-brand-soft px-1.5 py-0.5 text-xs font-medium text-brand"
                 >
                   {v}
                   <X
                     size={12}
-                    className="cursor-pointer"
+                    className="cursor-pointer transition-colors hover:text-risk"
                     onClick={(e) => {
                       e.stopPropagation()
                       toggle(v)
@@ -62,16 +66,19 @@ export function MultiSelectFilter({ label, options, value, onChange }: Props) {
               ))
             )}
           </span>
-          <ChevronDown size={16} className="shrink-0 text-muted" />
+          <ChevronDown
+            size={16}
+            className={cn('shrink-0 text-muted transition-transform duration-200', open && 'rotate-180')}
+          />
         </button>
 
         {open && (
-          <div className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-line bg-surface py-1 shadow-lg">
+          <div className="animate-scale-in absolute z-10 mt-1 max-h-56 w-full origin-top overflow-y-auto rounded-lg border border-line bg-surface py-1 shadow-lg">
             {options.map((option) => (
               <label
                 key={option}
                 className={cn(
-                  'flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-ink hover:bg-canvas-alt',
+                  'flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-ink transition-colors duration-100 hover:bg-canvas-alt',
                 )}
               >
                 <input

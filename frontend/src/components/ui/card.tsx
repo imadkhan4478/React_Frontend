@@ -6,6 +6,7 @@ function Card({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       className={cn(
         'rounded-2xl border border-line bg-surface shadow-sm',
+        'transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md',
         className,
       )}
       {...props}

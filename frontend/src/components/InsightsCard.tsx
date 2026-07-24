@@ -22,7 +22,9 @@ export function InsightsCard<T extends string>({ title, tabs, active, onChange, 
           <p className="text-sm font-semibold text-ink">{title}</p>
           <SegmentedControl options={tabs} value={active} onChange={onChange} variant="ghost" />
         </div>
-        {children}
+        <div key={active} className="animate-fade-in-up">
+          {children}
+        </div>
       </CardContent>
     </Card>
   )

@@ -28,7 +28,7 @@ export function AgingBuckets({ data, height = 300 }: Props) {
         <XAxis dataKey="bucket" tick={{ fill: colors.muted, fontSize: 11 }} axisLine={{ stroke: colors.line }} tickLine={false} />
         <YAxis tick={{ fill: colors.muted, fontSize: 12 }} axisLine={false} tickLine={false} />
         <Tooltip {...tooltipStyle} />
-        <Bar dataKey="orders" radius={[4, 4, 0, 0]} isAnimationActive={false}>
+        <Bar dataKey="orders" radius={[4, 4, 0, 0]} animationDuration={500} animationEasing="ease-out">
           {ordered.map((d, i) => (
             <Cell key={i} fill={severity[d.bucket] ?? BRAND} />
           ))}

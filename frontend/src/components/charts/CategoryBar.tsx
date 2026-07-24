@@ -24,7 +24,7 @@ export function CategoryBar({ data, category, value, height = 300 }: Props) {
         <XAxis dataKey={category} tick={{ fill: colors.muted, fontSize: 12 }} axisLine={{ stroke: colors.line }} tickLine={false} />
         <YAxis tick={{ fill: colors.muted, fontSize: 12 }} axisLine={false} tickLine={false} />
         <Tooltip {...tooltipStyle} />
-        <Bar dataKey={value} radius={[4, 4, 0, 0]} isAnimationActive={false} maxBarSize={72}>
+        <Bar dataKey={value} radius={[4, 4, 0, 0]} maxBarSize={72} isAnimationActive={false}>
           {data.map((d, i) => {
             const v = d[value] as number
             const t = max === min ? 1 : (v - min) / (max - min)

@@ -23,10 +23,12 @@ export function Logistics() {
         <SegmentedControl options={VIEWS} value={view} onChange={setView} />
       </div>
 
-      {view === 'shipments' && <ShipmentsView />}
-      {view === 'packing' && <PackingView />}
-      {view === 'transport' && <TransportView />}
-      {view === 'documentation' && <DocumentationView />}
+      <div key={view} className="animate-fade-in-up">
+        {view === 'shipments' && <ShipmentsView />}
+        {view === 'packing' && <PackingView />}
+        {view === 'transport' && <TransportView />}
+        {view === 'documentation' && <DocumentationView />}
+      </div>
     </div>
   )
 }
