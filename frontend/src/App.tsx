@@ -9,6 +9,9 @@ import { Imports } from '@/pages/Imports'
 import { Logistics } from '@/pages/Logistics'
 import { Reports } from '@/pages/Reports'
 import { Assistant } from '@/pages/Assistant'
+import { ImportsStatusList } from '@/features/importsStatus/ImportsStatusList'
+import { ImportsStatusDetail } from '@/features/importsStatus/ImportsStatusDetail'
+import { ImportsStatusWizard } from '@/features/importsStatus/wizard/ImportsStatusWizard'
 
 function App() {
   return (
@@ -22,6 +25,16 @@ function App() {
             <Route path="/purchases" element={<Purchases />} />
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/imports" element={<Imports />} />
+
+            {/* Consignment tracking — separate from the Imports dashboard above.
+                Nested so list/new/detail/edit share one parent path. */}
+            <Route path="/imports-status">
+              <Route index element={<ImportsStatusList />} />
+              <Route path="new" element={<ImportsStatusWizard />} />
+              <Route path=":id" element={<ImportsStatusDetail />} />
+              <Route path=":id/edit/:step" element={<ImportsStatusWizard />} />
+            </Route>
+
             <Route path="/logistics" element={<Logistics />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/assistant" element={<Assistant />} />

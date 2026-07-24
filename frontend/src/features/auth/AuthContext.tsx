@@ -1,10 +1,11 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 import { mockLogin } from '@/lib/mockAuth'
+import type { Role } from '@/lib/roleAccess'
 
 export interface User {
   username: string
   name: string
-  role: string
+  role: Role
 }
 
 interface AuthContextValue {
