@@ -32,8 +32,7 @@ export function Donut({ labels, values, height = 300, compact = false }: Props) 
           paddingAngle={2}
           label={compact ? undefined : ({ name, value }) => `${name} ${total ? Math.round((Number(value) / total) * 100) : 0}%`}
           labelLine={!compact}
-          animationDuration={600}
-          animationEasing="ease-out"
+          isAnimationActive={false}
         >
           {data.map((d, i) => {
             const [fg] = statusColors(d.label, colors)

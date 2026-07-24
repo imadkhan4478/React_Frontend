@@ -8,3 +8,7 @@ frontend/.vite/
 
 # Editor/OS
 .DS_Store
+
+# Throwaway browser-verification scripts + screenshots (never commit)
+frontend/_verify*
+frontend/_debug*
