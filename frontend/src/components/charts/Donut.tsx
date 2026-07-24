@@ -7,27 +7,31 @@ interface Props {
   labels: string[]
   values: number[]
   height?: number
+  /** For narrow containers (e.g. a spotlight card's side panel) — smaller
+   * ring, no legend, no outside labels (rely on the tooltip instead) so
+   * nothing clips against the container edge. */
+  compact?: boolean
 }
 
 /** Donut for composition (status split, stock health) — status-like
  * labels get their semantic risk/watch/healthy color where recognized. */
-export function Donut({ labels, values, height = 300 }: Props) {
+export function Donut({ labels, values, height = 300, compact = false }: Props) {
   const { colors } = useTheme()
   const data = labels.map((label, i) => ({ label, value: values[i] }))
   const total = values.reduce((a, b) => a + b, 0)
 
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <PieChart margin={{ top: 20, right: 40, bottom: 20, left: 40 }}>
+      <PieChart margin={compact ? { top: 4, right: 4, bottom: 4, left: 4 } : { top: 20, right: 40, bottom: 20, left: 40 }}>
         <Pie
           data={data}
           dataKey="value"
           nameKey="label"
-          innerRadius="50%"
-          outerRadius="72%"
+          innerRadius={compact ? '55%' : '50%'}
+          outerRadius={compact ? '90%' : '72%'}
           paddingAngle={2}
-          label={({ name, value }) => `${name} ${total ? Math.round((Number(value) / total) * 100) : 0}%`}
-          labelLine
+          label={compact ? undefined : ({ name, value }) => `${name} ${total ? Math.round((Number(value) / total) * 100) : 0}%`}
+          labelLine={!compact}
           isAnimationActive={false}
         >
           {data.map((d, i) => {
@@ -36,7 +40,7 @@ export function Donut({ labels, values, height = 300 }: Props) {
           })}
         </Pie>
         <Tooltip {...tooltipStyle} formatter={(value) => Number(value).toLocaleString()} />
-        <Legend wrapperStyle={{ fontSize: 12, color: colors.muted }} />
+        {!compact && <Legend wrapperStyle={{ fontSize: 12, color: colors.muted }} />}
       </PieChart>
     </ResponsiveContainer>
   )
