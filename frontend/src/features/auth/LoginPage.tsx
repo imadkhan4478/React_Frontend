@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
-import { ShieldCheck, Sparkles } from 'lucide-react'
+import { ShieldCheck, Sparkles, Sun, Moon } from 'lucide-react'
 import { useAuth } from './AuthContext'
+import { useTheme } from '@/theme/ThemeContext'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -10,6 +11,7 @@ import logo from '@/assets/qadri_logo_transparent.png'
 
 export function LoginPage() {
   const { user, loading, login } = useAuth()
+  const { dark, toggle } = useTheme()
   const location = useLocation()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -45,9 +47,19 @@ export function LoginPage() {
             <p className="text-[11px] text-muted">Qadri Group</p>
           </div>
         </div>
-        <span className="rounded-full border border-line px-3 py-1 text-xs font-medium text-muted">
-          Internal system
-        </span>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={toggle}
+            title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-line text-muted transition-colors hover:bg-canvas-alt hover:text-ink"
+          >
+            {dark ? <Sun size={15} /> : <Moon size={15} />}
+          </button>
+          <span className="rounded-full border border-line px-3 py-1 text-xs font-medium text-muted">
+            Internal system
+          </span>
+        </div>
       </div>
 
       <div className="grid flex-1 grid-cols-1 md:grid-cols-2">
