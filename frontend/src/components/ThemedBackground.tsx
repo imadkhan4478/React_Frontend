@@ -62,8 +62,9 @@ const SPOTS: Spot[] = [
 interface Props {
   module?: PageKey | 'login'
   /** 'ambient' sits softly behind a normal page; 'hero' is the denser,
-   * higher-contrast full-screen version used on the login page. */
-  variant?: 'ambient' | 'hero'
+   * higher-contrast full-screen version; 'split' is the subtler, sparser
+   * take used behind the login page's left (copy) panel. */
+  variant?: 'ambient' | 'hero' | 'split'
   className?: string
 }
 
@@ -71,7 +72,8 @@ export function ThemedBackground({ module = 'dashboard', variant = 'ambient', cl
   const icons = MODULE_ICONS[module] ?? MODULE_ICONS.login ?? [Package]
   const accent = module === 'login' ? '#4F46E5' : MODULE_ACCENTS[module as PageKey] ?? '#4F46E5'
   const isHero = variant === 'hero'
-  const fieldOpacity = isHero ? 1 : 0.5
+  const isSplit = variant === 'split'
+  const fieldOpacity = isHero ? 1 : isSplit ? 0.55 : 0.5
 
   return (
     <div
@@ -90,7 +92,7 @@ export function ThemedBackground({ module = 'dashboard', variant = 'ambient', cl
         className="animate-aurora absolute rounded-full blur-3xl"
         style={{
           right: '-12%', bottom: '-18%', width: '50%', height: '50%',
-          background: '#8B5CF6', opacity: isHero ? 0.3 : 0.12,
+          background: '#8B5CF6', opacity: isHero ? 0.3 : isSplit ? 0.1 : 0.12,
           ['--aurora-dur' as string]: '32s', animationDelay: '-8s',
         }}
       />
@@ -105,8 +107,9 @@ export function ThemedBackground({ module = 'dashboard', variant = 'ambient', cl
         />
       )}
 
-      {/* Drifting field icons */}
-      {SPOTS.map((s, i) => {
+      {/* Drifting field icons — 'split' shows a sparser subset so they sit
+          near the edges rather than crowding a headline in the middle. */}
+      {(isSplit ? SPOTS.filter((_, i) => i % 2 === 0) : SPOTS).map((s, i) => {
         const Icon = icons[i % icons.length]
         const style: CSSProperties = {
           left: s.left, top: s.top,

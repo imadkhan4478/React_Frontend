@@ -91,6 +91,16 @@
   }
 }
 
+/* Faint grid texture — the login page's split hero panel. Line color
+   pulls from --line so it's already tuned for both light/dark contrast. */
+.bg-grid-texture {
+  background-image:
+    linear-gradient(to right, var(--line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--line) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: linear-gradient(to bottom, black, transparent 85%);
+}
+
 @keyframes fade-in-up {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
