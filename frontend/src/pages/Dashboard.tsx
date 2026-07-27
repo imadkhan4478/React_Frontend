@@ -4,7 +4,6 @@ import { KpiCard } from '@/components/KpiCard'
 import { HeroStat } from '@/components/HeroStat'
 import { InsightsCard } from '@/components/InsightsCard'
 import { SegmentedControl } from '@/components/SegmentedControl'
-import { ThemedBackground } from '@/components/ThemedBackground'
 import { Card, CardContent } from '@/components/ui/card'
 import { RankedBar } from '@/components/charts/RankedBar'
 import { Donut } from '@/components/charts/Donut'
@@ -51,49 +50,38 @@ export function Dashboard() {
 
   const healthColor =
     health.level === 'healthy' ? colors.healthy : health.level === 'risk' ? colors.risk : colors.watch
-  const healthBg =
-    health.level === 'healthy' ? colors.healthyBg : health.level === 'risk' ? colors.riskBg : colors.watchBg
   const alertColor = { high: colors.risk, medium: colors.watch, low: colors.info }
   const firstName = user?.name?.split(' ')[0]
 
-  return (
-    <div className="flex flex-col gap-6">
-      {/* Hero band — bleeds edge-to-edge within the content area (cancels
-          AppLayout's p-8), same visual language as the login page: grid
-          texture + sparse drifting icons + a bold, personal headline
-          instead of a generic page title. */}
-      <div className="relative -mx-8 -mt-8 mb-2 overflow-hidden border-b border-line bg-canvas-alt px-8 py-10 lg:px-10">
-        <div className="bg-grid-texture absolute inset-0" />
-        <ThemedBackground module="dashboard" variant="split" />
-
-        <div className="animate-fade-in-up relative z-10 flex flex-wrap items-end justify-between gap-6">
-          <div className="max-w-xl">
-            <span className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-brand/25 bg-brand-soft px-3 py-1 text-xs font-semibold text-brand">
-              <Sparkles size={12} />
-              Executive Dashboard
-            </span>
-            <h1 className="font-display text-3xl font-extrabold leading-tight tracking-tight text-navy lg:text-4xl">
-              {greeting()}{firstName ? `, ${firstName}` : ''} 👋
-            </h1>
-            <p className="mt-2 max-w-md text-sm text-muted">
-              Here's how the supply chain is performing today.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <span
-              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold"
-              style={{ backgroundColor: healthBg, color: healthColor }}
-            >
-              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: healthColor }} />
-              {health.message}
-            </span>
-            <SegmentedControl options={RANGE_OPTIONS} value={rangeWeeks} onChange={setRangeWeeks} />
-          </div>
-        </div>
+  const heroHeader = (
+    <div className="flex flex-wrap items-end justify-between gap-6">
+      <div className="max-w-xl">
+        <span className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold">
+          <Sparkles size={12} />
+          Executive Dashboard
+        </span>
+        <h1 className="font-display text-3xl font-extrabold leading-tight tracking-tight lg:text-4xl">
+          {greeting()}{firstName ? `, ${firstName}` : ''} 👋
+        </h1>
+        <p className="mt-2 max-w-md text-sm text-white/70">
+          Here's how the supply chain is performing today.
+        </p>
       </div>
 
+      <div className="flex items-center gap-3">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5 text-xs font-semibold">
+          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: healthColor }} />
+          {health.message}
+        </span>
+        <SegmentedControl options={RANGE_OPTIONS} value={rangeWeeks} onChange={setRangeWeeks} variant="onBrand" />
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="flex flex-col gap-6">
       <HeroStat
+        header={heroHeader}
         label="Purchase Value"
         value={money(kpis.purchaseValue.value)}
         delta={kpis.purchaseValue.delta}
@@ -101,6 +89,7 @@ export function Dashboard() {
         trendData={trend}
         trendX="week"
         trendY="purchase_value"
+        trendHeight={220}
         caption={`PKR millions per week · last ${rangeWeeks} weeks`}
       />
 

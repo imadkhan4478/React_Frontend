@@ -101,6 +101,17 @@
   mask-image: linear-gradient(to bottom, black, transparent 85%);
 }
 
+/* Same grid, fixed white lines — for use on top of a colored/gradient
+   surface (e.g. HeroStat) where the theme-aware --line variable would be
+   invisible or the wrong contrast. */
+.bg-grid-texture-on-brand {
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.12) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.12) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse at top right, black, transparent 70%);
+}
+
 @keyframes fade-in-up {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
