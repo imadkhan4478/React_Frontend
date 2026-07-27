@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { PageHeader } from '@/components/PageHeader'
 import { FilterBar } from '@/components/FilterBar'
 import { MultiSelectFilter } from '@/components/MultiSelectFilter'
+import { DateRangeFilter } from '@/components/DateRangeFilter'
 import { Disclosure } from '@/components/Disclosure'
 import { KpiCard } from '@/components/KpiCard'
 import { InsightsCard } from '@/components/InsightsCard'
@@ -13,9 +14,10 @@ import { CategoryBar } from '@/components/charts/CategoryBar'
 import { RankedBar } from '@/components/charts/RankedBar'
 import { Donut } from '@/components/charts/Donut'
 import { BRAND, VIOLET } from '@/theme/tokens'
+import { monthInRange } from '@/lib/format'
 import {
   getStock, type StockRow,
-  inventoryStatusList, inventoryCategoryList, inventoryBranchList,
+  inventoryStatusList, inventoryReorderStatusList, inventoryCategoryList, inventoryBranchList, inventoryItemList,
 } from '@/lib/mockData/inventory'
 
 const INSIGHT_TABS = [
@@ -34,20 +36,31 @@ function countBy(rows: StockRow[], key: 'branch') {
 
 export function Inventory() {
   const [status, setStatus] = useState<string[]>([])
+  const [reorderStatus, setReorderStatus] = useState<string[]>([])
   const [category, setCategory] = useState<string[]>([])
   const [branch, setBranch] = useState<string[]>([])
+  const [item, setItem] = useState<string[]>([])
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [search, setSearch] = useState('')
   const [insightTab, setInsightTab] = useState<(typeof INSIGHT_TABS)[number]['value']>('branch')
 
-  const base = useMemo(() => getStock({ status, category, branch }), [status, category, branch])
+  const base = useMemo(
+    () => getStock({ status, reorderStatus, category, branch, item }),
+    [status, reorderStatus, category, branch, item],
+  )
+  const dated = useMemo(
+    () => base.filter((r) => monthInRange(r.last_restocked, dateFrom, dateTo)),
+    [base, dateFrom, dateTo],
+  )
 
   const data = useMemo(() => {
-    if (!search.trim()) return base
+    if (!search.trim()) return dated
     const needle = search.toLowerCase()
-    return base.filter((r) =>
+    return dated.filter((r) =>
       [r.item, r.item_code, r.branch, r.item_category, r.specs].some((v) => v.toLowerCase().includes(needle)),
     )
-  }, [base, search])
+  }, [dated, search])
 
   const availableUnits = data.reduce((s, r) => s + r.available_qty, 0)
   const totalStock = data.reduce((s, r) => s + r.stock_qty, 0)
@@ -101,9 +114,12 @@ export function Inventory() {
       <PageHeader title="Inventory" subtitle="Current stock levels and usage-based reorder risk" module="inventory" />
 
       <FilterBar search={{ value: search, onChange: setSearch, placeholder: 'Search by item, item code, branch, category, or specs…' }}>
-        <MultiSelectFilter label="Status" options={inventoryStatusList} value={status} onChange={setStatus} />
-        <MultiSelectFilter label="Category" options={inventoryCategoryList} value={category} onChange={setCategory} />
+        <DateRangeFilter label="Last Restocked" from={dateFrom} to={dateTo} onFromChange={setDateFrom} onToChange={setDateTo} />
         <MultiSelectFilter label="Branch" options={inventoryBranchList} value={branch} onChange={setBranch} />
+        <MultiSelectFilter label="Category" options={inventoryCategoryList} value={category} onChange={setCategory} />
+        <MultiSelectFilter label="Item" options={inventoryItemList} value={item} onChange={setItem} />
+        <MultiSelectFilter label="Stock Status" options={inventoryStatusList} value={status} onChange={setStatus} />
+        <MultiSelectFilter label="Reorder Status" options={inventoryReorderStatusList} value={reorderStatus} onChange={setReorderStatus} />
       </FilterBar>
 
       {/* Spotlight: at-risk headline + stock health composition, in place of a

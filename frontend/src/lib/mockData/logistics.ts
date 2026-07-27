@@ -41,14 +41,16 @@ const ALL_SHIPMENTS: ShipmentRow[] = Array.from({ length: 45 }, (_, i) => ({
   port_in_date: recentDate(rng, 84),
 }))
 
-export function getShipments(f: { status?: string[]; stage?: string[]; shippingLine?: string[]; country?: string[] } = {}) {
+export function getShipments(f: { status?: string[]; stage?: string[]; shippingLine?: string[]; country?: string[]; customer?: string[] } = {}) {
   return ALL_SHIPMENTS.filter((r) =>
-    matches(r.status, f.status) && matches(r.stage, f.stage) && matches(r.shipping_line, f.shippingLine) && matches(r.country, f.country))
+    matches(r.status, f.status) && matches(r.stage, f.stage) && matches(r.shipping_line, f.shippingLine) &&
+    matches(r.country, f.country) && matches(r.customer, f.customer))
 }
 export const shipmentStatusList = [...SHIPMENT_STATUSES]
 export const shipmentStageList = [...SHIPMENT_STAGES]
 export const shipmentShippingLineList = [...SHIPPING_LINES]
 export const shipmentCountryList = [...COUNTRIES]
+export const shipmentCustomerList = [...CUSTOMERS]
 
 // ---------------------------------------------------------------- Packing
 const PACKING_STATUSES = ['Pending Packing', 'In Progress', 'Completed'] as const
@@ -64,6 +66,7 @@ export interface PackingRow {
   business_type: string
   rfd_delay_days: number | null
   actual_packing_cost: number
+  packing_date: Date
 }
 
 const ALL_PACKING: PackingRow[] = Array.from({ length: 40 }, (_, i) => ({
@@ -75,16 +78,19 @@ const ALL_PACKING: PackingRow[] = Array.from({ length: 40 }, (_, i) => ({
   business_type: choice(rng, BUSINESS_TYPES),
   rfd_delay_days: rng() > 0.2 ? randInt(rng, -5, 40) : null,
   actual_packing_cost: randInt(rng, 20_000, 400_000),
+  packing_date: recentDate(rng, 84),
 }))
 
-export function getPacking(f: { status?: string[]; works?: string[]; productCategory?: string[]; businessType?: string[] } = {}) {
+export function getPacking(f: { status?: string[]; works?: string[]; productCategory?: string[]; businessType?: string[]; customer?: string[] } = {}) {
   return ALL_PACKING.filter((r) =>
-    matches(r.status, f.status) && matches(r.works, f.works) && matches(r.product_category, f.productCategory) && matches(r.business_type, f.businessType))
+    matches(r.status, f.status) && matches(r.works, f.works) && matches(r.product_category, f.productCategory) &&
+    matches(r.business_type, f.businessType) && matches(r.customer, f.customer))
 }
 export const packingStatusList = [...PACKING_STATUSES]
 export const packingWorksList = [...WORKS]
 export const packingCategoryList = [...ITEM_CATEGORIES]
 export const packingBusinessTypeList = [...BUSINESS_TYPES]
+export const packingCustomerList = [...CUSTOMERS]
 
 // ---------------------------------------------------------------- Transport / Shifting
 const SHIFTING_STATUSES = ['Booked', 'In Progress', 'Delivered'] as const
@@ -119,13 +125,20 @@ const ALL_SHIFTING: ShiftingRow[] = Array.from({ length: 38 }, (_, i) => ({
   savings_rs: rng() > 0.4 ? randInt(rng, 1_000, 40_000) : null,
 }))
 
-export function getShifting(f: { status?: string[]; movementType?: string[]; paymentStatus?: string[] } = {}) {
+export function getShifting(f: {
+  status?: string[]; movementType?: string[]; paymentStatus?: string[]
+  customer?: string[]; province?: string[]; transporter?: string[]
+} = {}) {
   return ALL_SHIFTING.filter((r) =>
-    matches(r.status, f.status) && matches(r.movement_type, f.movementType) && matches(r.payment_status, f.paymentStatus))
+    matches(r.status, f.status) && matches(r.movement_type, f.movementType) && matches(r.payment_status, f.paymentStatus) &&
+    matches(r.customer, f.customer) && matches(r.province, f.province) && matches(r.transporter, f.transporter))
 }
 export const shiftingStatusList = [...SHIFTING_STATUSES]
 export const shiftingMovementTypeList = [...MOVEMENT_TYPES]
 export const shiftingPaymentStatusList = [...PAYMENT_STATUSES]
+export const shiftingCustomerList = [...CUSTOMERS]
+export const shiftingProvinceList = [...PROVINCES]
+export const shiftingTransporterList = [...TRANSPORTERS]
 
 // ---------------------------------------------------------------- Documentation
 const DOC_STATUSES = ['Complete', 'Incomplete'] as const
@@ -140,6 +153,7 @@ export interface DocumentationRow {
   customer_completion_pct: number
   bank_completion_pct: number
   pending_documents: number
+  submitted_date: Date
 }
 
 const ALL_DOCUMENTATION: DocumentationRow[] = Array.from({ length: 30 }, (_, i) => {
@@ -156,6 +170,7 @@ const ALL_DOCUMENTATION: DocumentationRow[] = Array.from({ length: 30 }, (_, i) 
     customer_completion_pct: customer,
     bank_completion_pct: bank,
     pending_documents: completion >= 85 ? 0 : randInt(rng, 1, 5),
+    submitted_date: recentDate(rng, 84),
   }
 })
 

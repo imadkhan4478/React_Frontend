@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { FilterBar } from '@/components/FilterBar'
 import { MultiSelectFilter } from '@/components/MultiSelectFilter'
+import { DateRangeFilter } from '@/components/DateRangeFilter'
 import { Disclosure } from '@/components/Disclosure'
 import { KpiCard } from '@/components/KpiCard'
 import { InsightsCard } from '@/components/InsightsCard'
@@ -10,6 +11,7 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { CategoryBar } from '@/components/charts/CategoryBar'
 import { Donut } from '@/components/charts/Donut'
 import { RankedBar } from '@/components/charts/RankedBar'
+import { monthInRange } from '@/lib/format'
 import { getDocumentation, getDocumentTypes, documentationStatusList } from '@/lib/mockData/logistics'
 
 const TABS = [
@@ -20,10 +22,16 @@ const TABS = [
 
 export function DocumentationView() {
   const [status, setStatus] = useState<string[]>([])
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [search, setSearch] = useState('')
   const [tab, setTab] = useState<(typeof TABS)[number]['value']>('status')
 
-  const data = useMemo(() => getDocumentation({ status }), [status])
+  const filtered = useMemo(() => getDocumentation({ status }), [status])
+  const data = useMemo(
+    () => filtered.filter((r) => monthInRange(r.submitted_date, dateFrom, dateTo)),
+    [filtered, dateFrom, dateTo],
+  )
   const tableRows = useMemo(() => {
     if (!search.trim()) return data
     const needle = search.toLowerCase()
@@ -69,7 +77,8 @@ export function DocumentationView() {
 
   return (
     <div className="flex flex-col gap-6">
-      <FilterBar>
+      <FilterBar search={{ value: search, onChange: setSearch, placeholder: 'Search by export no or batch no…' }}>
+        <DateRangeFilter label="Submitted Date" from={dateFrom} to={dateTo} onFromChange={setDateFrom} onToChange={setDateTo} />
         <MultiSelectFilter label="Status" options={documentationStatusList} value={status} onChange={setStatus} />
       </FilterBar>
 
@@ -107,14 +116,8 @@ export function DocumentationView() {
         </ChartCard>
       </div>
 
-      <Disclosure title="View data / search">
-        <div className="flex flex-col gap-3 pb-4">
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by export no or batch no…"
-            className="h-10 w-full max-w-md rounded-lg border border-line bg-surface px-3 text-sm text-ink placeholder:text-muted"
-          />
+      <Disclosure title="View data">
+        <div className="pb-4">
           <DataTable columns={columns} rows={tableRows as unknown as Record<string, unknown>[]} statusColumn="status" height={420} />
         </div>
       </Disclosure>

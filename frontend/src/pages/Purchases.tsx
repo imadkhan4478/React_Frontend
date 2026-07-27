@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { PageHeader } from '@/components/PageHeader'
 import { FilterBar } from '@/components/FilterBar'
 import { MultiSelectFilter } from '@/components/MultiSelectFilter'
+import { DateRangeFilter } from '@/components/DateRangeFilter'
 import { Disclosure } from '@/components/Disclosure'
 import { KpiCard } from '@/components/KpiCard'
 import { HeroStat } from '@/components/HeroStat'
@@ -13,11 +14,11 @@ import { CategoryBar } from '@/components/charts/CategoryBar'
 import { Donut } from '@/components/charts/Donut'
 import { RankedBar } from '@/components/charts/RankedBar'
 import { AgingBuckets } from '@/components/charts/AgingBuckets'
-import { money, shortDate, weeklyTrendPoints, agingBuckets } from '@/lib/format'
+import { money, shortDate, weeklyTrendPoints, agingBuckets, monthInRange } from '@/lib/format'
 import {
   getPurchases, type PurchaseRow,
   purchaseStatusList, purchaseSupplierList, purchaseBranchList, purchaseCategoryList,
-  purchaseMopList, purchaseSourcingOfficerList,
+  purchaseMaterialList, purchasePpcStoreList, purchaseMopList, purchaseSourcingOfficerList,
 } from '@/lib/mockData/purchases'
 
 const INSIGHT_TABS = [
@@ -38,14 +39,22 @@ export function Purchases() {
   const [supplier, setSupplier] = useState<string[]>([])
   const [branch, setBranch] = useState<string[]>([])
   const [category, setCategory] = useState<string[]>([])
+  const [material, setMaterial] = useState<string[]>([])
+  const [ppcStore, setPpcStore] = useState<string[]>([])
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [mop, setMop] = useState<string[]>([])
   const [sourcingOfficer, setSourcingOfficer] = useState<string[]>([])
   const [search, setSearch] = useState('')
   const [insightTab, setInsightTab] = useState<(typeof INSIGHT_TABS)[number]['value']>('branch')
 
+  const filtered = useMemo(
+    () => getPurchases({ status, supplier, branch, category, material, ppcStore, mop, sourcingOfficer }),
+    [status, supplier, branch, category, material, ppcStore, mop, sourcingOfficer],
+  )
   const data = useMemo(
-    () => getPurchases({ status, supplier, branch, category, mop, sourcingOfficer }),
-    [status, supplier, branch, category, mop, sourcingOfficer],
+    () => filtered.filter((r) => monthInRange(r.purchase_date, dateFrom, dateTo)),
+    [filtered, dateFrom, dateTo],
   )
 
   const tableRows = useMemo(() => {
@@ -88,11 +97,14 @@ export function Purchases() {
     <div className="flex flex-col gap-6">
       <PageHeader title="Purchases" subtitle="Track purchase orders, suppliers, and delivery status" module="purchases" />
 
-      <FilterBar>
-        <MultiSelectFilter label="Status" options={purchaseStatusList} value={status} onChange={setStatus} />
-        <MultiSelectFilter label="Supplier" options={purchaseSupplierList} value={supplier} onChange={setSupplier} />
+      <FilterBar search={{ value: search, onChange: setSearch, placeholder: 'Search by item, supplier, PO number, ref no, or bill no…' }}>
+        <DateRangeFilter label="PO Date" from={dateFrom} to={dateTo} onFromChange={setDateFrom} onToChange={setDateTo} />
         <MultiSelectFilter label="Branch" options={purchaseBranchList} value={branch} onChange={setBranch} />
-        <MultiSelectFilter label="Category" options={purchaseCategoryList} value={category} onChange={setCategory} />
+        <MultiSelectFilter label="Supplier" options={purchaseSupplierList} value={supplier} onChange={setSupplier} />
+        <MultiSelectFilter label="Item Category" options={purchaseCategoryList} value={category} onChange={setCategory} />
+        <MultiSelectFilter label="Material" options={purchaseMaterialList} value={material} onChange={setMaterial} />
+        <MultiSelectFilter label="Status" options={purchaseStatusList} value={status} onChange={setStatus} />
+        <MultiSelectFilter label="PPC / Store" options={purchasePpcStoreList} value={ppcStore} onChange={setPpcStore} />
       </FilterBar>
 
       <Disclosure title="More filters — Mode of Purchase, Sourcing Officer">
@@ -138,14 +150,8 @@ export function Purchases() {
         </ChartCard>
       </div>
 
-      <Disclosure title="View data / search">
-        <div className="flex flex-col gap-3 pb-4">
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by item, supplier, PO number, ref no, or bill no…"
-            className="h-10 w-full max-w-md rounded-lg border border-line bg-surface px-3 text-sm text-ink placeholder:text-muted"
-          />
+      <Disclosure title="View data">
+        <div className="pb-4">
           <DataTable columns={columns} rows={tableRows as unknown as Record<string, unknown>[]} statusColumn="status" height={420} />
         </div>
       </Disclosure>

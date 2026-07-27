@@ -4,6 +4,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { SegmentedControl } from '@/components/SegmentedControl'
 import { FilterBar } from '@/components/FilterBar'
 import { MultiSelectFilter } from '@/components/MultiSelectFilter'
+import { DateRangeFilter } from '@/components/DateRangeFilter'
 import { Disclosure } from '@/components/Disclosure'
 import { KpiCard } from '@/components/KpiCard'
 import { HeroStat } from '@/components/HeroStat'
@@ -14,7 +15,7 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { CategoryBar } from '@/components/charts/CategoryBar'
 import { Donut } from '@/components/charts/Donut'
 import { RankedBar } from '@/components/charts/RankedBar'
-import { money, shortDate, weeklyTrendPoints } from '@/lib/format'
+import { money, shortDate, weeklyTrendPoints, monthInRange } from '@/lib/format'
 import {
   getPurchases,
   purchaseBranchList, purchaseCategoryList,
@@ -105,12 +106,18 @@ export function Reports() {
   const [module, setModule] = useState<ModuleKey>('purchases')
   const [branch, setBranch] = useState<string[]>([])
   const [category, setCategory] = useState<string[]>([])
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [insightTab, setInsightTab] = useState<InsightTab>('branch')
   const [search, setSearch] = useState('')
 
   const isInventory = module === 'inventory'
 
-  const data = useMemo(() => normalize(module, branch, category), [module, branch, category])
+  const normalized = useMemo(() => normalize(module, branch, category), [module, branch, category])
+  const data = useMemo(
+    () => normalized.filter((r) => monthInRange(r.date, dateFrom, dateTo)),
+    [normalized, dateFrom, dateTo],
+  )
 
   const tableRows = useMemo(() => {
     if (!search.trim()) return data
@@ -178,7 +185,8 @@ export function Reports() {
         <SegmentedControl options={MODULES} value={module} onChange={setModule} />
       </div>
 
-      <FilterBar>
+      <FilterBar search={{ value: search, onChange: setSearch, placeholder: 'Search by ref, name, branch, category, or status…' }}>
+        <DateRangeFilter label="Date" from={dateFrom} to={dateTo} onFromChange={setDateFrom} onToChange={setDateTo} />
         <MultiSelectFilter label="Branch" options={purchaseBranchList} value={branch} onChange={setBranch} />
         <MultiSelectFilter label="Category" options={purchaseCategoryList} value={category} onChange={setCategory} />
       </FilterBar>
@@ -236,15 +244,9 @@ export function Reports() {
         </ChartCard>
       </div>
 
-      <Disclosure title="View data / search / export">
+      <Disclosure title="View data / export">
         <div className="flex flex-col gap-3 pb-4">
           <div className="flex flex-wrap items-center gap-3">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by ref, name, branch, category, or status…"
-              className="h-10 w-full max-w-md rounded-lg border border-line bg-surface px-3 text-sm text-ink placeholder:text-muted"
-            />
             <button
               onClick={handleExport}
               disabled={tableRows.length === 0}

@@ -32,7 +32,7 @@ export function MultiSelectFilter({ label, options, value, onChange }: Props) {
   }
 
   return (
-    <div className="flex flex-col gap-1.5" ref={ref}>
+    <div className="flex w-full min-w-[160px] flex-col gap-1.5 sm:w-48" ref={ref}>
       <Label>{label}</Label>
       <div className="relative">
         <button
@@ -73,7 +73,7 @@ export function MultiSelectFilter({ label, options, value, onChange }: Props) {
         </button>
 
         {open && (
-          <div className="animate-scale-in absolute z-10 mt-1 max-h-56 w-full origin-top overflow-y-auto rounded-lg border border-line bg-surface py-1 shadow-lg">
+          <div className="animate-scale-in absolute z-20 mt-1 max-h-56 w-max min-w-full max-w-xs origin-top overflow-y-auto rounded-lg border border-line bg-surface py-1 shadow-lg">
             {options.map((option) => (
               <label
                 key={option}

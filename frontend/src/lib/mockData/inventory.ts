@@ -1,4 +1,4 @@
-import { mulberry32, randInt, choice, BRANCHES, ITEMS, ITEM_CATEGORIES } from './shared'
+import { mulberry32, randInt, choice, recentDate, BRANCHES, ITEMS, ITEM_CATEGORIES } from './shared'
 
 export interface StockRow {
   item_code: string
@@ -11,6 +11,8 @@ export interface StockRow {
   hold_qty: number
   reorder_level: number
   stock_status: 'Out of Stock' | 'Below Reorder' | 'OK'
+  reorder_status: 'Reorder Needed' | 'Adequate'
+  last_restocked: Date
   days_of_stock?: number
 }
 
@@ -36,6 +38,8 @@ function makeRow(i: number): StockRow {
     hold_qty: holdQty,
     reorder_level: reorderLevel,
     stock_status: stockStatus,
+    reorder_status: availableQty < reorderLevel ? 'Reorder Needed' : 'Adequate',
+    last_restocked: recentDate(rng, 84),
     days_of_stock: hasHistory ? randInt(rng, 2, 90) : undefined,
   }
 }
@@ -44,8 +48,10 @@ const ALL_STOCK: StockRow[] = Array.from({ length: 60 }, (_, i) => makeRow(i))
 
 export interface StockFilters {
   status?: string[]
+  reorderStatus?: string[]
   category?: string[]
   branch?: string[]
+  item?: string[]
 }
 
 function matches(value: string, selected?: string[]) {
@@ -54,10 +60,17 @@ function matches(value: string, selected?: string[]) {
 
 export function getStock(filters: StockFilters = {}): StockRow[] {
   return ALL_STOCK.filter(
-    (row) => matches(row.stock_status, filters.status) && matches(row.item_category, filters.category) && matches(row.branch, filters.branch),
+    (row) =>
+      matches(row.stock_status, filters.status) &&
+      matches(row.reorder_status, filters.reorderStatus) &&
+      matches(row.item_category, filters.category) &&
+      matches(row.branch, filters.branch) &&
+      matches(row.item, filters.item),
   )
 }
 
 export const inventoryStatusList = ['Out of Stock', 'Below Reorder', 'OK']
+export const inventoryReorderStatusList = ['Reorder Needed', 'Adequate']
 export const inventoryCategoryList = [...ITEM_CATEGORIES]
 export const inventoryBranchList = [...BRANCHES]
+export const inventoryItemList = [...ITEMS]

@@ -3,6 +3,9 @@ import {
   BRANCHES, SUPPLIERS, ITEMS, ITEM_CATEGORIES, MODES_OF_PURCHASE, SOURCING_OFFICERS,
 } from './shared'
 
+const MATERIALS = ['Steel', 'Aluminum', 'Rubber', 'Plastic', 'Composite'] as const
+const PPC_STORE = ['PPC', 'Store'] as const
+
 export interface PurchaseRow {
   ref_no: string
   po_number: string
@@ -11,6 +14,8 @@ export interface PurchaseRow {
   supplier: string
   branch: string
   category: string
+  material: string
+  ppc_store: string
   mop: string
   sourcing_officer: string
   quantity: number
@@ -39,6 +44,8 @@ function makeRow(i: number): PurchaseRow {
     supplier: choice(rng, SUPPLIERS),
     branch: choice(rng, BRANCHES),
     category: choice(rng, ITEM_CATEGORIES),
+    material: choice(rng, MATERIALS),
+    ppc_store: choice(rng, PPC_STORE),
     mop: choice(rng, MODES_OF_PURCHASE),
     sourcing_officer: choice(rng, SOURCING_OFFICERS),
     quantity: randInt(rng, 10, 500),
@@ -57,6 +64,8 @@ export interface PurchaseFilters {
   supplier?: string[]
   branch?: string[]
   category?: string[]
+  material?: string[]
+  ppcStore?: string[]
   mop?: string[]
   sourcingOfficer?: string[]
 }
@@ -72,6 +81,8 @@ export function getPurchases(filters: PurchaseFilters = {}): PurchaseRow[] {
       matches(row.supplier, filters.supplier) &&
       matches(row.branch, filters.branch) &&
       matches(row.category, filters.category) &&
+      matches(row.material, filters.material) &&
+      matches(row.ppc_store, filters.ppcStore) &&
       matches(row.mop, filters.mop) &&
       matches(row.sourcing_officer, filters.sourcingOfficer),
   )
@@ -81,5 +92,7 @@ export const purchaseStatusList = ['Pending', 'Completed', 'Delayed']
 export const purchaseSupplierList = [...SUPPLIERS]
 export const purchaseBranchList = [...BRANCHES]
 export const purchaseCategoryList = [...ITEM_CATEGORIES]
+export const purchaseMaterialList = [...MATERIALS]
+export const purchasePpcStoreList = [...PPC_STORE]
 export const purchaseMopList = [...MODES_OF_PURCHASE]
 export const purchaseSourcingOfficerList = [...SOURCING_OFFICERS]
