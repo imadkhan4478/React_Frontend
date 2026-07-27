@@ -12,6 +12,9 @@ import { Assistant } from '@/pages/Assistant'
 import { ImportsStatusList } from '@/features/importsStatus/ImportsStatusList'
 import { ImportsStatusDetail } from '@/features/importsStatus/ImportsStatusDetail'
 import { ImportsStatusWizard } from '@/features/importsStatus/wizard/ImportsStatusWizard'
+import { LogisticsStatusList } from '@/features/logisticsStatus/LogisticsStatusList'
+import { LogisticsStatusDetail } from '@/features/logisticsStatus/LogisticsStatusDetail'
+import { LogisticsStatusWizard } from '@/features/logisticsStatus/wizard/LogisticsStatusWizard'
 
 function App() {
   return (
@@ -33,6 +36,16 @@ function App() {
               <Route path="new" element={<ImportsStatusWizard />} />
               <Route path=":id" element={<ImportsStatusDetail />} />
               <Route path=":id/edit/:step" element={<ImportsStatusWizard />} />
+            </Route>
+
+            {/* Logistics order tracking — Export/Local/Packing entry wizard,
+                parallel to /imports-status. Separate from the Logistics
+                dashboard route below. */}
+            <Route path="/logistics-status">
+              <Route index element={<LogisticsStatusList />} />
+              <Route path="new" element={<LogisticsStatusWizard />} />
+              <Route path=":id" element={<LogisticsStatusDetail />} />
+              <Route path=":id/edit/:step" element={<LogisticsStatusWizard />} />
             </Route>
 
             <Route path="/logistics" element={<Logistics />} />
