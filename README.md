@@ -34,7 +34,7 @@ powerful underneath, and it's presented to top management.
 
 ## What's inside
 
-Eight sections, reachable from the sidebar:
+Nine sections, reachable from the sidebar:
 
 | Section | What it shows |
 | --- | --- |
@@ -43,6 +43,7 @@ Eight sections, reachable from the sidebar:
 | **Inventory** | Current stock levels, out-of-stock / below-reorder risk, and stock-runway insights. |
 | **Imports** | Import shipments, values, and customs-clearance status. |
 | **Imports Status** | Consignment tracking with a multi-step data-entry wizard (teammate-owned). |
+| **Logistics Status** | Export / local order tracking with a five-step data-entry wizard — **scaffold only** for now: the list and detail screens are placeholders, no real records yet. |
 | **Logistics** | Export shipments, packing, transport, and documentation. |
 | **Reports** | A custom report builder — pick a source, columns, and filters, then export. |
 | **Assistant (QadriBot)** | Ask about the data in plain language and get an answer, table, or chart back. |
@@ -119,7 +120,8 @@ frontend/
 │   │   └── logistics/         Logistics' four sub-views
 │   ├── features/
 │   │   ├── auth/              login, auth context, protected routes
-│   │   └── importsStatus/     consignment tracking + entry wizard
+│   │   ├── importsStatus/     consignment tracking + entry wizard
+│   │   └── logisticsStatus/   order tracking + entry wizard (scaffold only)
 │   ├── components/            shared UI (cards, filters, charts, layout, …)
 │   │   └── charts/            themed Recharts wrappers
 │   ├── lib/

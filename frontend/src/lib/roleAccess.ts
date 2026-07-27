@@ -3,7 +3,7 @@ import type { PageKey } from '@/theme/tokens'
 export type Role = 'admin' | 'manager' | 'entry' | 'viewer'
 
 export const ALL_PAGES: PageKey[] = [
-  'dashboard', 'purchases', 'inventory', 'imports', 'importsStatus', 'logistics', 'reports', 'assistant',
+  'dashboard', 'purchases', 'inventory', 'imports', 'importsStatus', 'logisticsStatus', 'logistics', 'reports', 'assistant',
 ]
 
 /**
