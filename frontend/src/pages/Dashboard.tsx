@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { TriangleAlert, CircleAlert, Info, Timer, PackageX, CheckCircle2, Plane } from 'lucide-react'
-import { PageHeader } from '@/components/PageHeader'
+import { TriangleAlert, CircleAlert, Info, Timer, PackageX, CheckCircle2, Plane, Sparkles } from 'lucide-react'
 import { KpiCard } from '@/components/KpiCard'
 import { HeroStat } from '@/components/HeroStat'
 import { InsightsCard } from '@/components/InsightsCard'
 import { SegmentedControl } from '@/components/SegmentedControl'
+import { ThemedBackground } from '@/components/ThemedBackground'
 import { Card, CardContent } from '@/components/ui/card'
 import { RankedBar } from '@/components/charts/RankedBar'
 import { Donut } from '@/components/charts/Donut'
@@ -58,13 +58,29 @@ export function Dashboard() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <p className="font-display animate-fade-in-up text-sm font-semibold text-brand">
-          {greeting()}{firstName ? `, ${firstName}` : ''} 👋
-        </p>
-        <div className="mt-1 flex flex-wrap items-center justify-between gap-3">
-          <PageHeader title="Executive Dashboard" subtitle="Supply chain performance at a glance" module="dashboard" />
-          <div className="mb-6 flex items-center gap-3">
+      {/* Hero band — bleeds edge-to-edge within the content area (cancels
+          AppLayout's p-8), same visual language as the login page: grid
+          texture + sparse drifting icons + a bold, personal headline
+          instead of a generic page title. */}
+      <div className="relative -mx-8 -mt-8 mb-2 overflow-hidden border-b border-line bg-canvas-alt px-8 py-10 lg:px-10">
+        <div className="bg-grid-texture absolute inset-0" />
+        <ThemedBackground module="dashboard" variant="split" />
+
+        <div className="animate-fade-in-up relative z-10 flex flex-wrap items-end justify-between gap-6">
+          <div className="max-w-xl">
+            <span className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-brand/25 bg-brand-soft px-3 py-1 text-xs font-semibold text-brand">
+              <Sparkles size={12} />
+              Executive Dashboard
+            </span>
+            <h1 className="font-display text-3xl font-extrabold leading-tight tracking-tight text-navy lg:text-4xl">
+              {greeting()}{firstName ? `, ${firstName}` : ''} 👋
+            </h1>
+            <p className="mt-2 max-w-md text-sm text-muted">
+              Here's how the supply chain is performing today.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
             <span
               className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold"
               style={{ backgroundColor: healthBg, color: healthColor }}
