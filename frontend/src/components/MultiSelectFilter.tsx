@@ -73,7 +73,7 @@ export function MultiSelectFilter({ label, options, value, onChange }: Props) {
         </button>
 
         {open && (
-          <div className="animate-scale-in absolute z-20 mt-1 max-h-56 w-max min-w-full max-w-xs origin-top overflow-y-auto rounded-lg border border-line bg-surface py-1 shadow-lg">
+          <div className="animate-scale-in absolute z-20 mt-1 max-h-[min(20rem,60vh)] w-max min-w-full max-w-xs origin-top overflow-y-auto overscroll-contain rounded-lg border border-line bg-surface py-1 shadow-lg">
             {options.map((option) => (
               <label
                 key={option}
