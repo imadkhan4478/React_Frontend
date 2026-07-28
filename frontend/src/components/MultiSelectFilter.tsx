@@ -18,6 +18,7 @@ interface Props {
 export function MultiSelectFilter({ label, options, value, onChange }: Props) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -26,6 +27,20 @@ export function MultiSelectFilter({ label, options, value, onChange }: Props) {
     document.addEventListener('mousedown', onClickOutside)
     return () => document.removeEventListener('mousedown', onClickOutside)
   }, [])
+
+  // Close on page scroll instead of letting the menu float along with it —
+  // once its trigger button scrolls out of view the menu looks orphaned and
+  // can pick up stray hover state from whatever's now under the cursor.
+  // Scrolling *inside* the menu's own option list (long lists) is exempt.
+  useEffect(() => {
+    if (!open) return
+    function onScroll(e: Event) {
+      if (menuRef.current && e.target instanceof Node && menuRef.current.contains(e.target)) return
+      setOpen(false)
+    }
+    document.addEventListener('scroll', onScroll, true)
+    return () => document.removeEventListener('scroll', onScroll, true)
+  }, [open])
 
   function toggle(option: string) {
     onChange(value.includes(option) ? value.filter((v) => v !== option) : [...value, option])
@@ -73,7 +88,10 @@ export function MultiSelectFilter({ label, options, value, onChange }: Props) {
         </button>
 
         {open && (
-          <div className="animate-scale-in absolute z-20 mt-1 max-h-[min(20rem,60vh)] w-max min-w-full max-w-xs origin-top overflow-y-auto overscroll-contain rounded-lg border border-line bg-surface py-1 shadow-lg">
+          <div
+            ref={menuRef}
+            className="animate-scale-in absolute z-20 mt-1 max-h-[min(20rem,60vh)] w-max min-w-full max-w-xs origin-top overflow-y-auto overscroll-contain rounded-lg border border-line bg-surface py-1 shadow-lg"
+          >
             {options.map((option) => (
               <label
                 key={option}
