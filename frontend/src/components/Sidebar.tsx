@@ -18,7 +18,7 @@ function GroupNavItem({ item }: { item: PageDef & { children: NonNullable<PageDe
   const Icon = item.icon
 
   return (
-    <div className="my-2 rounded-xl border border-line bg-canvas-alt/60 p-2">
+    <div className="my-2 rounded-xl border-2 border-line/80 bg-canvas-alt/60 p-2 dark:border-line/45">
       <button
         type="button"
         onClick={() => setExpanded((o) => !o)}
@@ -59,7 +59,17 @@ export function Sidebar({ onHide }: { onHide: () => void }) {
   const visiblePages = PAGE_DEFS.filter((p) => allowed.includes(p.key))
 
   return (
-    <aside className="relative flex h-screen w-64 shrink-0 flex-col border-r border-line bg-sidebar px-4 py-6">
+    <aside className={cn(
+      'relative z-10 flex h-screen w-64 shrink-0 flex-col px-4 py-6',
+      // Same glass treatment as the dashboard's Panel (bg-surface/65,
+      // inset top highlight, softened border) — same opacity range this
+      // time (/60 light, /75 dark), not the earlier /90 which was too
+      // close to fully opaque to actually read as glass. The canvas color
+      // behind the app shell (see AppLayout's outer bg-canvas) shows
+      // through at this opacity, which is the "background visible" part.
+      'border-r-2 border-line/80 bg-sidebar/25 dark:border-line/45 dark:bg-sidebar/38',
+      'shadow-[inset_-1px_0_0_rgba(255,255,255,0.5)] dark:shadow-[inset_-1px_0_0_rgba(255,255,255,0.06)]',
+    )}>
       <button
         type="button"
         onClick={onHide}
@@ -113,7 +123,7 @@ export function Sidebar({ onHide }: { onHide: () => void }) {
       </nav>
 
       {user && (
-        <div className="mt-4 flex items-center justify-between rounded-lg border border-line px-3 py-2.5">
+        <div className="mt-4 flex items-center justify-between rounded-lg border-2 border-line/80 px-3 py-2.5 dark:border-line/45">
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-ink">{user.name}</p>
             <p className="truncate text-xs capitalize text-muted">{user.role}</p>

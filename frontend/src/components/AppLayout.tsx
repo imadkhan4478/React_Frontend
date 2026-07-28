@@ -34,12 +34,19 @@ export function AppLayout() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-canvas">
+    <div className="relative flex h-screen overflow-hidden bg-canvas">
+      {/* Backdrop now sits behind the ENTIRE shell, not just main, so the
+          sidebar's glass transparency reveals the actual photo/aurora
+          layer instead of the flat bg-canvas color (which was nearly the
+          same white as the sidebar in light mode — that's why lowering
+          the sidebar's opacity alone didn't visibly do anything before).
+          Fixed + full-viewport so it doesn't scroll or resize with main. */}
+      <ThemedBackground key={module} module={module} variant="ambient" className="fixed" />
       {sidebarOpen && <Sidebar onHide={() => setOpen(false)} />}
-      {/* main is a fixed-height frame: the themed backdrop stays put while
-          only the inner region scrolls, so the ambient layer reads as a
-          calm background rather than scrolling away with the content. */}
-      <main className="relative flex-1 overflow-hidden">
+      {/* main is a fixed-height frame: only the inner region scrolls, so
+          the ambient layer reads as a calm background rather than
+          scrolling away with the content. */}
+      <main className="relative z-10 flex-1 overflow-hidden">
         {!sidebarOpen && (
           <button
             type="button"
@@ -50,7 +57,6 @@ export function AppLayout() {
             <PanelLeftOpen size={16} />
           </button>
         )}
-        <ThemedBackground key={module} module={module} variant="ambient" />
         <div className="relative z-10 h-full overflow-y-auto p-8">
           <div key={pathname} className="animate-fade-in-up">
             <Outlet />

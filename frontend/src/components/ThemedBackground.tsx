@@ -6,6 +6,7 @@ import {
 import type { PageKey } from '@/theme/tokens'
 import { MODULE_ACCENTS } from '@/theme/tokens'
 import { useTheme } from '@/theme/ThemeContext'
+import { cn } from '@/lib/utils'
 import heroLight from '@/assets/dashboard-hero-light.png'
 import heroDark from '@/assets/dashboard-hero-dark.png'
 
@@ -40,11 +41,11 @@ const MODULE_ICON: Partial<Record<PageKey | 'login', LucideIcon>> = {
 function DashboardPhoto({ className }: { className?: string }) {
   const { dark } = useTheme()
   return (
-    <div aria-hidden className={`pointer-events-none absolute inset-0 z-0 overflow-hidden ${className ?? ''}`}>
+    <div aria-hidden className={cn('pointer-events-none absolute inset-0 z-0 overflow-hidden', className)}>
       <img src={dark ? heroDark : heroLight} alt="" className="h-full w-full object-cover" />
       {/* Light scrim so cards can go semi-transparent anywhere on the page
           and still keep their text readable over busy parts of the photo. */}
-      <div className="absolute inset-0" style={{ background: dark ? 'rgba(11,14,20,0.55)' : 'rgba(255,255,255,0.5)' }} />
+      <div className="absolute inset-0" style={{ background: dark ? 'rgba(11,14,20,0.4)' : 'rgba(255,255,255,0.3)' }} />
     </div>
   )
 }
@@ -73,7 +74,7 @@ export function ThemedBackground({ module = 'dashboard', variant = 'ambient', cl
   return (
     <div
       aria-hidden
-      className={`pointer-events-none absolute inset-0 z-0 overflow-hidden ${className ?? ''}`}
+      className={cn('pointer-events-none absolute inset-0 z-0 overflow-hidden', className)}
     >
       {/* Smoky aurora blobs — slow, blurred, accent-tinted depth */}
       <div

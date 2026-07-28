@@ -36,14 +36,29 @@ function greeting(): string {
 }
 
 /** Semi-transparent card — no backdrop-blur (that's what caused the earlier
- * lag: blur is recomputed every frame). Plain alpha over the page's photo
- * backdrop is essentially free, and the backdrop's own scrim (see
- * ThemedBackground's DashboardPhoto) keeps text readable underneath it. */
+ * lag: blur is recomputed every frame, and this page has continuous aurora
+ * animation + hover transforms behind/on every card, which would make it
+ * worse, not better). Plain alpha over the page's photo backdrop is
+ * essentially free, and the backdrop's own scrim (see ThemedBackground's
+ * DashboardPhoto) keeps text readable underneath it.
+ *
+ * Opacity is lower in light mode than dark (bg-surface/65 vs /75): the
+ * light scrim in DashboardPhoto is itself a near-opaque white
+ * (rgba(255,255,255,0.5)), so a light-mode card on top of it was stacking
+ * two white layers and reading as almost fully opaque — hiding the photo
+ * entirely. Dark mode doesn't have that stacking problem, so it keeps the
+ * original /75.
+ *
+ * The inset top highlight (a 1px bright line, near-invisible bottom line)
+ * is what actually reads as "glass" here instead of blur — it's a plain
+ * box-shadow, not backdrop-filter, so it costs nothing on scroll/repaint. */
 function Panel({ className, children }: { className?: string; children: React.ReactNode }) {
   return (
     <div
       className={cn(
-        'rounded-2xl border border-line bg-surface/75 shadow-sm',
+        'rounded-2xl border-2 border-line/80 bg-surface/28 shadow-sm dark:border-line/45 dark:bg-surface/42',
+        'shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_1px_2px_rgba(16,24,40,0.04)]',
+        'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_2px_rgba(0,0,0,0.25)]',
         'transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md',
         className,
       )}
@@ -136,8 +151,13 @@ export function Dashboard() {
     <div className="flex flex-col gap-5">
       {/* Hero band — sits over the page-wide photo (ThemedBackground) like
           every other panel, just with more breathing room for the greeting
-          and a few live stats. */}
-      <Panel className="p-6 lg:p-8">
+          and a few live stats. Even more transparent than the (already
+          lowered) Panel default in light mode: this band has the least
+          text/texture over it of any card on the page and covers the
+          widest, most "photo-forward" strip, so it can afford to show more
+          of the image through it than a chart-heavy card can. Dark mode
+          keeps the Panel default /75. */}
+      <Panel className="bg-surface/15 dark:bg-surface/28 p-6 lg:p-8">
         <div className="flex min-h-[200px] flex-col justify-between gap-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
