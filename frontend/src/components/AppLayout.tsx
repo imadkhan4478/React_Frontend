@@ -11,7 +11,7 @@ const SIDEBAR_STORAGE_KEY = 'qgirs-sidebar-open'
 /** Map the current path to its module key so each section gets its own
  * subject-themed backdrop. Longest matching path wins (so /imports-status
  * doesn't resolve to /imports). Imports Status and Logistics Status are
- * grouped under one "Data Entry" sidebar entry but keep their own distinct
+ * grouped under one "Operations" sidebar entry but keep their own distinct
  * theming identity, so they're resolved by their own PageKey, not
  * `dataEntry`'s. */
 function moduleForPath(pathname: string): PageKey {

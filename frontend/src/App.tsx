@@ -33,7 +33,7 @@ function App() {
             <Route path="/imports" element={<RequirePage pageKey="imports"><Imports /></RequirePage>} />
 
             {/* Consignment tracking + Logistics order tracking — grouped in
-                the sidebar as "Data Entry", gated together the same way. */}
+                the sidebar as "Operations", gated together the same way. */}
             <Route element={<RequirePage pageKey="dataEntry"><Outlet /></RequirePage>}>
               <Route path="/imports-status">
                 <Route index element={<ImportsStatusList />} />

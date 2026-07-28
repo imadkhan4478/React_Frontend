@@ -11,7 +11,7 @@ export interface PageDef {
   path: string
   icon: LucideIcon
   /** Sub-links rendered under this item instead of it being a direct link
-   * itself — used for Data Entry, which groups two independent route trees
+   * itself — used for Operations, which groups two independent route trees
    * (Imports Status, Logistics Status) behind one sidebar entry. */
   children?: { label: string; path: string }[]
 }
@@ -29,7 +29,7 @@ export const PAGE_DEFS: PageDef[] = [
   // Kept separate from the reporting pages above (its own section in the
   // sidebar, not interleaved between them) — a different kind of work.
   {
-    key: 'dataEntry', label: 'Data Entry', path: '/imports-status', icon: ClipboardList,
+    key: 'dataEntry', label: 'Operations', path: '/imports-status', icon: ClipboardList,
     children: [
       { label: 'Imports Status', path: '/imports-status' },
       { label: 'Logistics Status', path: '/logistics-status' },
