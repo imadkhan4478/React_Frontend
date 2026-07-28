@@ -4,12 +4,12 @@ import {
   Sparkles, Wallet, ArrowUpRight, ArrowDownRight, type LucideIcon,
 } from 'lucide-react'
 import { SegmentedControl } from '@/components/SegmentedControl'
+import { Card } from '@/components/ui/card'
 import { RankedBar } from '@/components/charts/RankedBar'
 import { Donut } from '@/components/charts/Donut'
 import { AgingBuckets } from '@/components/charts/AgingBuckets'
 import { TrendLine } from '@/components/charts/TrendLine'
 import { money } from '@/lib/format'
-import { cn } from '@/lib/utils'
 import { BRAND } from '@/theme/tokens'
 import { useTheme } from '@/theme/ThemeContext'
 import { useAuth } from '@/features/auth/AuthContext'
@@ -35,38 +35,12 @@ function greeting(): string {
   return 'Good evening'
 }
 
-/** Semi-transparent card — no backdrop-blur (that's what caused the earlier
- * lag: blur is recomputed every frame, and this page has continuous aurora
- * animation + hover transforms behind/on every card, which would make it
- * worse, not better). Plain alpha over the page's photo backdrop is
- * essentially free, and the backdrop's own scrim (see ThemedBackground's
- * DashboardPhoto) keeps text readable underneath it.
- *
- * Opacity is lower in light mode than dark (bg-surface/65 vs /75): the
- * light scrim in DashboardPhoto is itself a near-opaque white
- * (rgba(255,255,255,0.5)), so a light-mode card on top of it was stacking
- * two white layers and reading as almost fully opaque — hiding the photo
- * entirely. Dark mode doesn't have that stacking problem, so it keeps the
- * original /75.
- *
- * The inset top highlight (a 1px bright line, near-invisible bottom line)
- * is what actually reads as "glass" here instead of blur — it's a plain
- * box-shadow, not backdrop-filter, so it costs nothing on scroll/repaint. */
-function Panel({ className, children }: { className?: string; children: React.ReactNode }) {
-  return (
-    <div
-      className={cn(
-        'rounded-2xl border-2 border-line/80 bg-surface/28 shadow-sm dark:border-line/45 dark:bg-surface/42',
-        'shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_1px_2px_rgba(16,24,40,0.04)]',
-        'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_2px_rgba(0,0,0,0.25)]',
-        'transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md',
-        className,
-      )}
-    >
-      {children}
-    </div>
-  )
-}
+/** Dashboard used to have its own semi-transparent card here; that's now
+ * just the shared `Card` component (see components/ui/card.tsx) so every
+ * page stays in sync automatically instead of two copies of the same
+ * glass treatment quietly drifting apart. Aliased as `Panel` so nothing
+ * below needs to change. */
+const Panel = Card
 
 function Sparkline({ values, color }: { values: number[]; color: string }) {
   const clean = values.filter((v) => v !== null && v !== undefined)
