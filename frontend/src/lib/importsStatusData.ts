@@ -1,7 +1,12 @@
 import {
   CONSIGNMENT_STATUSES,
   CLOSED_STATUS,
+  DRAFT_DEFAULT_VALUES,
+  SUBMITTED,
+  emptyItem,
   type ConsignmentStatus,
+  type ConsignmentDraft,
+  type RequisitionType,
 } from '@/features/importsStatus/schema'
 
 /**
@@ -251,3 +256,101 @@ export const branchList = [...BRANCHES]
 export const statusList = [...CONSIGNMENT_STATUSES]
 export const supplierList = [...SUPPLIERS]
 export const requisitionList = [...REQUISITION_LABELS]
+
+/* ------------------------------------------------------------------ */
+/* Wizard draft bridge                                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `ConsignmentRow` (above) is the flat, display-shaped record the list/detail
+ * screens read. `ConsignmentDraft` (schema.ts) is the much deeper shape the
+ * wizard's form actually edits — most of its fields (instrument no., ports,
+ * ETA revision history, payments, status history, landed cost...) simply
+ * aren't tracked by the row. Editing an existing consignment means bridging
+ * the two: known overlapping fields come from the row, everything the row
+ * doesn't carry starts blank, exactly like a brand-new draft would.
+ *
+ * `DRAFTS` caches the bridged (and then edited) draft per systemId so that
+ * navigating between wizard steps — which fully remounts the page — doesn't
+ * lose edits made on a step already visited this session.
+ */
+const DRAFTS: Record<string, ConsignmentDraft> = {}
+
+const REQ_LABEL_TO_TYPE: Record<string, RequisitionType> = {
+  Store: 'store', Engineering: 'engineering', Others: 'others',
+}
+
+function rowToDraft(row: ConsignmentRow): ConsignmentDraft {
+  return {
+    ...DRAFT_DEFAULT_VALUES,
+    systemId: row.systemId,
+    branch: row.branch,
+    supplier: row.supplier,
+    origin: row.origin,
+    currency: row.currency,
+    items: row.items.map((it, i) => ({
+      ...emptyItem(`item-${row.systemId}-${i}`),
+      itemName: it.itemName,
+      itemCode: it.itemCode,
+      quantity: it.quantity,
+      uom: it.uom,
+      requisitionType: REQ_LABEL_TO_TYPE[it.requisitionType],
+      referenceNo: it.referenceNo,
+      hsCode: it.hsCode ?? '',
+    })),
+    paymentInstrument: row.paymentInstrument as ConsignmentDraft['paymentInstrument'],
+    exchangeRate: row.exchangeRate,
+    rateDate: row.rateDate,
+    etd: row.etd ?? '',
+    eta: row.eta ?? '',
+    status: row.status,
+    clearingAgent: row.clearingAgent ?? '',
+    freeDays: row.freeDays ?? undefined,
+    gateOutDate: row.gateOut ?? '',
+    // An existing record found in the system is treated as previously
+    // submitted, not a fresh draft — DRAFT_DEFAULT_VALUES otherwise defaults
+    // recordState to 'draft', which is only right for a brand-new consignment.
+    recordState: SUBMITTED,
+  }
+}
+
+/**
+ * Edit-mode entry point for the wizard: returns the full draft for an
+ * existing consignment (from the session's edit cache if this consignment has
+ * already been opened/edited this session, otherwise bridged fresh from the
+ * row), or `undefined` if no such consignment exists.
+ */
+export function getConsignmentDraft(systemId: string): ConsignmentDraft | undefined {
+  if (DRAFTS[systemId]) return DRAFTS[systemId]
+  const row = getConsignment(systemId)
+  if (!row) return undefined
+  const draft = rowToDraft(row)
+  DRAFTS[systemId] = draft
+  return draft
+}
+
+/**
+ * Persists a step's edits for the session. Mutates the in-memory mock store:
+ * the full draft cache (so every field the wizard tracks survives the next
+ * step's full-page remount), and the fields `ConsignmentRow` itself carries
+ * (so the list/detail screens — which read `ALL`, not the draft cache — also
+ * reflect the edit).
+ */
+export function updateConsignment(systemId: string, data: ConsignmentDraft): void {
+  DRAFTS[systemId] = data
+
+  const row = ALL.find((r) => r.systemId === systemId)
+  if (!row) return
+  row.branch = data.branch || row.branch
+  row.supplier = data.supplier || row.supplier
+  row.origin = data.origin || row.origin
+  row.currency = data.currency || row.currency
+  row.status = (data.status || row.status) as ConsignmentStatus
+  row.etd = data.etd || row.etd
+  row.eta = data.eta || row.eta
+  row.exchangeRate = data.exchangeRate ?? row.exchangeRate
+  row.rateDate = data.rateDate || row.rateDate
+  row.clearingAgent = data.clearingAgent || row.clearingAgent
+  row.freeDays = data.freeDays ?? row.freeDays
+  row.gateOut = data.gateOutDate || row.gateOut
+}
