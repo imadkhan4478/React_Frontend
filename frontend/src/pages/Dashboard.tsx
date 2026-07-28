@@ -4,7 +4,6 @@ import {
   Sparkles, Wallet, ArrowUpRight, ArrowDownRight, type LucideIcon,
 } from 'lucide-react'
 import { SegmentedControl } from '@/components/SegmentedControl'
-import { SupplyChainScene } from '@/components/scenes/SupplyChainScene'
 import { RankedBar } from '@/components/charts/RankedBar'
 import { Donut } from '@/components/charts/Donut'
 import { AgingBuckets } from '@/components/charts/AgingBuckets'
@@ -36,15 +35,15 @@ function greeting(): string {
   return 'Good evening'
 }
 
-/** Solid surface card. Kept opaque (no backdrop-blur) on purpose: frosted
- * glass over a live background is what caused the earlier lag, and solid
- * cards keep text crisp. The themed scene lives in the hero band above,
- * where it has room to be seen — not hidden behind every card. */
+/** Semi-transparent card — no backdrop-blur (that's what caused the earlier
+ * lag: blur is recomputed every frame). Plain alpha over the page's photo
+ * backdrop is essentially free, and the backdrop's own scrim (see
+ * ThemedBackground's DashboardPhoto) keeps text readable underneath it. */
 function Panel({ className, children }: { className?: string; children: React.ReactNode }) {
   return (
     <div
       className={cn(
-        'rounded-2xl border border-line bg-surface shadow-sm',
+        'rounded-2xl border border-line bg-surface/75 shadow-sm',
         'transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md',
         className,
       )}
@@ -135,14 +134,11 @@ export function Dashboard() {
 
   return (
     <div className="flex flex-col gap-5">
-      {/* Hero band — the themed isometric scene lives here, on the right,
-          with the greeting and a few live stats overlaid on the left. */}
-      <div
-        className="relative overflow-hidden rounded-2xl border border-line shadow-sm"
-        style={{ background: 'linear-gradient(120deg, var(--brand-soft) 0%, var(--surface) 62%)' }}
-      >
-        {/* <SupplyChainScene /> */}
-        <div className="relative z-10 flex min-h-[232px] flex-col justify-between gap-6 p-6 lg:p-8">
+      {/* Hero band — sits over the page-wide photo (ThemedBackground) like
+          every other panel, just with more breathing room for the greeting
+          and a few live stats. */}
+      <Panel className="p-6 lg:p-8">
+        <div className="flex min-h-[200px] flex-col justify-between gap-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <span className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-brand/25 bg-brand-soft px-3 py-1 text-xs font-semibold text-brand">
@@ -176,7 +172,7 @@ export function Dashboard() {
             ))}
           </div>
         </div>
-      </div>
+      </Panel>
 
       {/* Hero metric + Attention, side by side */}
       <div className="grid gap-5 lg:grid-cols-3">

@@ -5,6 +5,9 @@ import {
 } from 'lucide-react'
 import type { PageKey } from '@/theme/tokens'
 import { MODULE_ACCENTS } from '@/theme/tokens'
+import { useTheme } from '@/theme/ThemeContext'
+import heroLight from '@/assets/dashboard-hero-light.png'
+import heroDark from '@/assets/dashboard-hero-dark.png'
 
 /**
  * Ambient, subject-related backdrop: a slow, soft "smoke" of blurred,
@@ -34,6 +37,18 @@ const MODULE_ICON: Partial<Record<PageKey | 'login', LucideIcon>> = {
   login: Globe,
 }
 
+function DashboardPhoto({ className }: { className?: string }) {
+  const { dark } = useTheme()
+  return (
+    <div aria-hidden className={`pointer-events-none absolute inset-0 z-0 overflow-hidden ${className ?? ''}`}>
+      <img src={dark ? heroDark : heroLight} alt="" className="h-full w-full object-cover" />
+      {/* Light scrim so cards can go semi-transparent anywhere on the page
+          and still keep their text readable over busy parts of the photo. */}
+      <div className="absolute inset-0" style={{ background: dark ? 'rgba(11,14,20,0.55)' : 'rgba(255,255,255,0.5)' }} />
+    </div>
+  )
+}
+
 interface Props {
   module?: PageKey | 'login'
   /** 'ambient' sits softly behind a normal page; 'hero' is the denser,
@@ -44,19 +59,11 @@ interface Props {
 }
 
 export function ThemedBackground({ module = 'dashboard', variant = 'ambient', className }: Props) {
-  // Dashboard is the flagship. Its visible isometric scene lives inside the
-  // page's hero band (SupplyChainScene, rendered by Dashboard itself); here
-  // we only lay down a cheap, static, filter-free tint so the page-wide
-  // backdrop reads as themed without costing paint. No blur, no animation.
-  if (module === 'dashboard') {
-    return (
-      <div
-        aria-hidden
-        className={`pointer-events-none absolute inset-0 z-0 ${className ?? ''}`}
-        style={{ background: 'radial-gradient(90% 70% at 88% 0%, rgba(99,102,241,0.07), transparent 55%)' }}
-      />
-    )
-  }
+  // Dashboard is the flagship: a real port/logistics photo fills the whole
+  // page behind the (semi-transparent) cards, instead of a per-module icon.
+  // It's a single static <img> — no blur/animation — so it costs one paint,
+  // not a per-frame one.
+  if (module === 'dashboard') return <DashboardPhoto className={className} />
 
   const Icon = MODULE_ICON[module] ?? Globe
   const accent = module === 'login' ? '#4F46E5' : MODULE_ACCENTS[module as PageKey] ?? '#4F46E5'
