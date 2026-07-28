@@ -20,6 +20,7 @@ export const PAGE_DEFS: PageDef[] = [
   { key: 'imports', label: 'Imports', path: '/imports', icon: Plane },
   { key: 'importsStatus', label: 'Imports Status', path: '/imports-status', icon: ClipboardList },
   { key: 'logisticsStatus', label: 'Logistics Status', path: '/logistics-status', icon: Truck },
+  { key: 'truckingStatus', label: 'Trucking Status', path: '/trucking-status', icon: Truck },
   { key: 'logistics', label: 'Logistics', path: '/logistics', icon: Truck },
   { key: 'reports', label: 'Reports', path: '/reports', icon: BarChart3 },
   { key: 'assistant', label: 'Assistant', path: '/assistant', icon: MessageSquare },
