@@ -44,6 +44,20 @@ interface Props {
 }
 
 export function ThemedBackground({ module = 'dashboard', variant = 'ambient', className }: Props) {
+  // Dashboard is the flagship. Its visible isometric scene lives inside the
+  // page's hero band (SupplyChainScene, rendered by Dashboard itself); here
+  // we only lay down a cheap, static, filter-free tint so the page-wide
+  // backdrop reads as themed without costing paint. No blur, no animation.
+  if (module === 'dashboard') {
+    return (
+      <div
+        aria-hidden
+        className={`pointer-events-none absolute inset-0 z-0 ${className ?? ''}`}
+        style={{ background: 'radial-gradient(90% 70% at 88% 0%, rgba(99,102,241,0.07), transparent 55%)' }}
+      />
+    )
+  }
+
   const Icon = MODULE_ICON[module] ?? Globe
   const accent = module === 'login' ? '#4F46E5' : MODULE_ACCENTS[module as PageKey] ?? '#4F46E5'
   const isHero = variant === 'hero'
