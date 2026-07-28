@@ -24,6 +24,7 @@ const MODULE_ICONS: Partial<Record<PageKey | 'login', LucideIcon[]>> = {
   inventory: [Boxes, Package, Warehouse, PackageCheck, Forklift],
   imports: [Plane, Ship, Container, Globe, Anchor],
   importsStatus: [Container, Ship, Plane, ClipboardList, Anchor],
+  logisticsStatus: [Truck, ClipboardList, Package, Forklift, MapPin],
   logistics: [Truck, Ship, Container, MapPin, Package],
   reports: [BarChart3, PieChart, LineChart, ClipboardList, TrendingUp],
   assistant: [MessageSquare, Sparkles, BarChart3, Package, Truck],
