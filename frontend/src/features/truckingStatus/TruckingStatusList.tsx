@@ -181,11 +181,18 @@ export function TruckingStatusList() {
 
 function SourceTag({ row }: { row: TruckingRow }) {
   const label = sourceLabel(row.source)
-  const cls =
+  const style =
     row.source === 'from-logistics'
-      ? 'bg-blue-500/10 text-blue-600'
+      ? { backgroundColor: 'var(--color-info-bg)', color: 'var(--color-info)' }
       : row.source === 'from-import-fob'
-        ? 'bg-amber-500/10 text-amber-600'
-        : 'bg-canvas-alt text-muted'
-  return <span className={`rounded-full px-2 py-0.5 text-xs ${cls}`}>{label}</span>
+        ? { backgroundColor: 'var(--color-watch-bg)', color: 'var(--color-watch)' }
+        : undefined
+  return (
+    <span
+      className={`rounded-full px-2 py-0.5 text-xs ${style ? '' : 'bg-canvas-alt text-muted'}`}
+      style={style}
+    >
+      {label}
+    </span>
+  )
 }

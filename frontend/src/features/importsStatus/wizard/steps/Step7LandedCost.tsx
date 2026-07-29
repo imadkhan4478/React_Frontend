@@ -3,7 +3,7 @@ import {
   type ConsignmentDraft, elcTotal, alcTotal, landedCostVariance, alcPerUnit,
   foreignTotal, bankChargesTotal,
 } from '../../schema'
-import { Field, Input, Callout, CarriedContext, PendingBanner } from './fields'
+import { Input, Callout, CarriedContext, PendingBanner } from './fields'
 
 const pkr = (v: number | undefined) => (v === undefined ? '—' : `PKR ${Math.round(v).toLocaleString('en-US')}`)
 

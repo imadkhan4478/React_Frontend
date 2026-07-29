@@ -19,14 +19,14 @@ export function Step6Clearance() {
   const statusHistory = useWatch({ control, name: 'statusHistory' }) ?? []
   const eta = watch('eta')
   const freeDays = watch('freeDays')
-  const gateOut = watch('gateOut')
+  const gateOutDate = watch('gateOutDate')
 
-  const draft = { statusHistory, eta, gateOutDate: gateOut } as ConsignmentDraft
+  const draft = { statusHistory, eta, gateOutDate } as Pick<ConsignmentDraft, 'statusHistory' | 'eta' | 'gateOutDate'>
   const basis = clearanceBasis(draft)
   const arrived = arrivedAtPortDate(draft)
   const clearDays = clearanceDays(draft)
   const atPortDays = basis.date
-    ? Math.round((+new Date(gateOut || new Date().toISOString().slice(0, 10)) - +new Date(basis.date)) / 86_400_000)
+    ? Math.round((+new Date(gateOutDate || new Date().toISOString().slice(0, 10)) - +new Date(basis.date)) / 86_400_000)
     : undefined
   const freeLeft = freeDays !== undefined && atPortDays !== undefined ? freeDays - atPortDays : undefined
 
@@ -65,7 +65,7 @@ export function Step6Clearance() {
           </Field>
 
           <Field label="Gate out date" hint="When it left the port">
-            <Input type="date" {...register('gateOut')} />
+            <Input type="date" {...register('gateOutDate')} />
           </Field>
 
           <Field label="Demurrage (PKR)" hint="Carries into landed cost">
@@ -80,7 +80,7 @@ export function Step6Clearance() {
           <Readout
             label="Free days left"
             value={freeLeft !== undefined ? `${freeLeft}` : '—'}
-            warn={freeLeft !== undefined && freeLeft <= 2 && !gateOut}
+            warn={freeLeft !== undefined && freeLeft <= 2 && !gateOutDate}
           />
           <Readout label="Clearance time" value={clearDays !== undefined ? `${clearDays} days` : '—'} />
         </div>
@@ -104,9 +104,9 @@ export function Step6Clearance() {
 
 function Readout({ label, value, warn, muted }: { label: string; value: string; warn?: boolean; muted?: boolean }) {
   return (
-    <div className={`bg-surface px-3.5 py-2.5 ${warn ? 'bg-[var(--color-warning-soft,#FBEDE2)]' : ''}`}>
+    <div className={`bg-surface px-3.5 py-2.5 ${warn ? 'bg-[var(--color-watch-bg)]' : ''}`}>
       <div className="text-[10px] uppercase tracking-wide text-muted">{label}</div>
-      <div className={`mt-0.5 text-[14px] font-semibold tabular-nums ${warn ? 'text-[var(--color-warning,#B4531A)]' : muted ? 'text-muted' : ''}`}>{value}</div>
+      <div className={`mt-0.5 text-[14px] font-semibold tabular-nums ${warn ? 'text-[var(--color-watch)]' : muted ? 'text-muted' : ''}`}>{value}</div>
     </div>
   )
 }

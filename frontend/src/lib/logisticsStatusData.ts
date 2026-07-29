@@ -1,7 +1,10 @@
 import {
   ORDER_TYPES,
   statusesFor,
+  requiredVsDeliveryDelay,
   type LogisticsDraft,
+  type LogisticsItem,
+  type LogisticsContainer,
   type OrderType,
 } from '@/features/logisticsStatus/schema'
 
@@ -66,16 +69,43 @@ function makeOrder(i: number): LogisticsOrder {
   const status = pick(statuses)
   const stageIndex = statuses.indexOf(status)
 
-  const quantity = randInt(50, 5000)
-  const netWeight = randInt(200, 18000)
-  const grossWeight = netWeight + randInt(20, 400)
+  // 1-3 items per order. Export numbers are independent per line — some
+  // orders share one filing across every item, others don't, matching how
+  // this is actually booked.
+  const lineCount = randInt(1, 3)
+  const items: LogisticsItem[] = Array.from({ length: lineCount }, (_, n) => {
+    const netWeight = randInt(200, 18000)
+    return {
+      id: `item-${240 - i}-${n}`,
+      itemDetail: pick(CATALOGUE),
+      quantity: randInt(50, 5000),
+      netWeight,
+      grossWeight: netWeight + randInt(20, 400),
+      idm: `IDM-${randInt(1000, 9999)}`,
+      exportNo: isExport ? `EXP-${randInt(1000, 9999)}` : '',
+      batchNo: rng() > 0.4 ? `B-${randInt(100, 999)}` : '',
+    }
+  })
 
   const hasTransport = stageIndex >= 2
   const dispatchNoteDate = hasTransport ? addDays('2026-04-01', randInt(20, 100)) : ''
   const gateOutDate = hasTransport ? addDays(dispatchNoteDate, randInt(0, 3)) : ''
   const actualDeliveryDate = stageIndex >= statuses.length - 1 ? addDays(gateOutDate || '2026-05-01', randInt(3, 20)) : ''
 
+  // Requisition sits upstream of transport planning entirely — raised well
+  // before dispatch, same as importsStatus's requisitionDate/requiredDate.
+  const requisitionDate = rng() > 0.15 ? addDays('2026-02-15', randInt(0, 45)) : ''
+  const requiredDate = requisitionDate ? addDays(requisitionDate, randInt(45, 130)) : ''
+
   const province = pick(PROVINCES)
+  const hasContainers = isExport && stageIndex >= 3
+  const containers: LogisticsContainer[] = hasContainers
+    ? Array.from({ length: randInt(1, 4) }, (_, n) => ({
+        id: `container-${240 - i}-${n}`,
+        containerType: pick(CONTAINER_TYPES),
+        containerNo: rng() > 0.3 ? `MSKU${randInt(1000000, 9999999)}` : '',
+      }))
+    : []
 
   return {
     systemId: `LOG-2026-${String(240 - i).padStart(4, '0')}`,
@@ -84,13 +114,9 @@ function makeOrder(i: number): LogisticsOrder {
     originCity: isExport ? '' : CITIES[province],
     originProvince: isExport ? '' : province,
     customerName: pick(CUSTOMERS),
-    itemDetail: pick(CATALOGUE),
-    quantity,
-    netWeight,
-    grossWeight,
-    idm: `IDM-${randInt(1000, 9999)}`,
-    exportNo: isExport ? `EXP-${randInt(1000, 9999)}` : '',
-    batchNo: rng() > 0.4 ? `B-${randInt(100, 999)}` : '',
+    items,
+    requisitionDate,
+    requiredDate,
 
     transporterName: hasTransport ? pick(TRANSPORTERS) : '',
     vehicleType: hasTransport ? pick(VEHICLE_TYPES) : '',
@@ -102,8 +128,7 @@ function makeOrder(i: number): LogisticsOrder {
     originFactory: rng() > 0.3 ? 'Unit 2 — Manga Mandi' : '',
     destination: isExport ? pick(DESTINATIONS) : 'Local delivery',
 
-    containerCount: isExport && stageIndex >= 3 ? randInt(1, 4) : 0,
-    containerType: isExport && stageIndex >= 3 ? pick(CONTAINER_TYPES) : '',
+    containers,
     pol: isExport && stageIndex >= 3 ? 'Port Qasim, Karachi' : '',
     pod: isExport && stageIndex >= 3 ? pick(DESTINATIONS) : '',
     shippingLine: isExport && stageIndex >= 3 ? pick(SHIPPING_LINES) : '',
@@ -139,6 +164,7 @@ export interface LogisticsFilters {
   search?: string
   orderType?: OrderType[]
   status?: string[]
+  customer?: string[]
 }
 
 const inSet = <T extends string>(v: T, s?: T[]) => !s || s.length === 0 || s.includes(v)
@@ -148,8 +174,12 @@ export function getLogisticsOrders(f: LogisticsFilters = {}): LogisticsOrder[] {
   return ALL.filter((o) => {
     if (!inSet(o.orderType, f.orderType)) return false
     if (!inSet(o.status, f.status as string[] | undefined)) return false
+    if (f.customer?.length && !f.customer.includes(o.customerName)) return false
     if (q) {
-      const hay = [o.systemId, o.customerName, o.itemDetail, o.idm].join(' ').toLowerCase()
+      const hay = [
+        o.systemId, o.customerName,
+        ...o.items.map((it) => `${it.itemDetail} ${it.idm} ${it.exportNo}`),
+      ].join(' ').toLowerCase()
       if (!hay.includes(q)) return false
     }
     return true
@@ -158,6 +188,10 @@ export function getLogisticsOrders(f: LogisticsFilters = {}): LogisticsOrder[] {
 
 export const getLogisticsOrder = (systemId: string): LogisticsOrder | undefined =>
   ALL.find((o) => o.systemId === systemId)
+
+/** Same convention as importsStatusData's requiredDelayDays — positive means
+ *  late, null (never 0) means one of the two dates isn't filled in yet. */
+export const requiredDelayDays = (o: LogisticsOrder) => requiredVsDeliveryDelay(o)
 
 /** Mutates the in-memory mock store — same convention as updateConsignment
  *  in lib/importsStatusData.ts. Unlike Imports Status, `LogisticsDraft` is
@@ -171,3 +205,6 @@ export function updateLogisticsOrder(systemId: string, data: LogisticsDraft): vo
 
 export const customerList = [...CUSTOMERS]
 export const orderTypeList = [...ORDER_TYPES]
+/** Both pipelines' statuses, deduplicated — a status filter needs every
+ *  label either order type can be in, not just one pipeline's set. */
+export const statusList = [...new Set([...statusesFor('Export'), ...statusesFor('Local')])]

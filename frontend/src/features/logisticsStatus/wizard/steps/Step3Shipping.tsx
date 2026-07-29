@@ -1,7 +1,12 @@
-import { useFormContext, useWatch } from 'react-hook-form'
+import { useFormContext, useFieldArray, useWatch } from 'react-hook-form'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { daysBetween, type LogisticsDraft } from '../../schema'
+import { daysBetween, emptyContainer, type LogisticsDraft } from '../../schema'
+
+const CONTAINER_TYPES = ["20' Dry", "40' Dry", "40' High Cube", "20' Reefer", "40' Reefer", "20' Open Top", "Flat Rack"]
+const selectClass =
+  'flex h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink ' +
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50'
 
 function DerivedField({ label, value, derivation }: { label: string; value: string; derivation: string }) {
   return (
@@ -17,6 +22,7 @@ function DerivedField({ label, value, derivation }: { label: string; value: stri
 
 export function Step3Shipping() {
   const { register, control, formState: { errors } } = useFormContext<LogisticsDraft>()
+  const { fields: containerFields, append: appendContainer, remove: removeContainer } = useFieldArray({ control, name: 'containers' })
   const [cro, actualArrival, orderType] = useWatch({
     control,
     name: ['croArrivalDate', 'actualArrivalDate', 'orderType'],
@@ -32,19 +38,49 @@ export function Step3Shipping() {
         </div>
       )}
 
+      <section className="rounded-xl border border-line bg-surface">
+        <h3 className="border-b border-line px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted">
+          Containers — a shipment can mix types
+        </h3>
+        <div className="space-y-2 p-4">
+          {containerFields.map((f, i) => (
+            <div key={f.id} className="grid grid-cols-[1fr_1fr_auto] items-end gap-3 rounded-lg border border-line bg-canvas-alt/40 p-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor={`containers.${i}.containerType`}>Container Type</Label>
+                <select id={`containers.${i}.containerType`} className={selectClass} {...register(`containers.${i}.containerType`)}>
+                  <option value="">Select…</option>
+                  {CONTAINER_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor={`containers.${i}.containerNo`}>Container No. <span className="font-normal text-muted">(optional)</span></Label>
+                <Input id={`containers.${i}.containerNo`} placeholder="e.g. MSKU1234567" {...register(`containers.${i}.containerNo`)} />
+              </div>
+              <button
+                type="button"
+                onClick={() => removeContainer(i)}
+                className="h-10 w-10 rounded border border-line text-muted hover:border-risk hover:text-risk"
+                title="Remove container"
+              >×</button>
+            </div>
+          ))}
+
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => appendContainer(emptyContainer(`container-${Date.now()}`))}
+              className="rounded-lg border border-line px-3 py-1.5 text-xs hover:border-muted"
+            >
+              + Add container
+            </button>
+            <span className="text-xs text-muted">
+              {containerFields.length === 0 ? 'No containers added yet' : `${containerFields.length} container${containerFields.length === 1 ? '' : 's'}`}
+            </span>
+          </div>
+        </div>
+      </section>
+
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="containerCount">No. of Containers</Label>
-          <Input id="containerCount" type="number" step="1" {...register('containerCount', { valueAsNumber: true })} />
-          {errors.containerCount && <p className="text-xs text-risk">{errors.containerCount.message}</p>}
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="containerType">Type of Containers</Label>
-          <Input id="containerType" placeholder="e.g. 20ft / 40ft HC" {...register('containerType')} />
-          {errors.containerType && <p className="text-xs text-risk">{errors.containerType.message}</p>}
-        </div>
-
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="pol">POL (Port of Loading)</Label>
           <Input id="pol" {...register('pol')} />

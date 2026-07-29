@@ -1,7 +1,7 @@
 import { useFormContext, useWatch } from 'react-hook-form'
 import { type ConsignmentDraft, CONSIGNMENT_STATUSES } from '../../schema'
 import { etaChain } from '../../format'
-import { Field, Input, Select, Callout, CarriedContext } from './fields'
+import { Field, Select, Callout, CarriedContext } from './fields'
 
 /**
  * Step 5 — Status & Remarks.
