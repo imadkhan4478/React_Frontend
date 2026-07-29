@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { FormProvider, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import type { z } from 'zod'
 import { PageHeader } from '@/components/PageHeader'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -71,7 +72,7 @@ export function ImportsStatusWizard() {
   // getConsignmentDraft/updateConsignment.
   const existingDraft = id ? getConsignmentDraft(id) : undefined
 
-  const methods = useForm<ConsignmentDraft>({
+  const methods = useForm<z.input<typeof consignmentDraftSchema>, unknown, ConsignmentDraft>({
     resolver: zodResolver(consignmentDraftSchema),
     defaultValues: existingDraft ?? DRAFT_DEFAULT_VALUES,
     mode: 'onBlur',
@@ -125,7 +126,11 @@ export function ImportsStatusWizard() {
   function handleSaveAndMove() {
     if (id && pendingStep !== null) {
       const values = methods.getValues()
-      updateConsignment(id, values)
+      // getValues() returns the resolver's INPUT type (fields with a zod
+      // `.default()` are optional there); updateConsignment wants the
+      // OUTPUT type. Safe to cast — those defaulted fields are always
+      // populated once the form has mounted with defaultValues.
+      updateConsignment(id, values as ConsignmentDraft)
       // React Router keeps this component mounted across step navigation
       // (only the `:step` param changes, not the route element) — so the
       // dirty baseline has to move forward explicitly, or the guard fires

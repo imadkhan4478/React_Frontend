@@ -7,19 +7,58 @@ import { z } from 'zod'
  * schema-level `required` on a later step's field never blocks an earlier
  * one — see wizard/LogisticsStatusWizard.tsx.
  *
- * Mirrors features/importsStatus/schema.ts. The one structural difference:
- * a Logistics order is Export | Local, and that choice drives conditional
- * fields across several steps (origin shape, IDM/export numbers, the
- * expenditure set, and the status list). Rather than scatter `if` checks in
- * templates, the order type lives on Step 1 and each step reads it from the
- * form context — same "single rules object per screen" convention the imports
- * module and CLAUDE.md call for.
+ * Mirrors features/importsStatus/schema.ts, including the header/lines split:
+ * an order can carry several items, and — since a single order can bundle
+ * shipments that were booked under different export filings — each item
+ * carries its OWN export number rather than one on the header. Quantity and
+ * both weights are per item too, so a mixed order's true total weight is
+ * summed, never a single header field standing in for several items' worth
+ * of cargo.
+ *
+ * The one other structural feature: a Logistics order is Export | Local, and
+ * that choice drives conditional fields across several steps (origin shape,
+ * per-item export numbers, the expenditure set, and the status list). The
+ * order type lives on Step 1 and each step reads it from the form context —
+ * same "single rules object per screen" convention the imports module and
+ * CLAUDE.md call for.
  */
 
 export const ORDER_TYPES = ['Export', 'Local'] as const
 export type OrderType = (typeof ORDER_TYPES)[number]
 
-// --- Step 1: Consignment / order details ---------------------------------
+/** Number inputs hand back '' when cleared — treat that as absent, not 0. */
+const optionalNumber = z.preprocess(
+  (v) => (v === '' || v === null || Number.isNaN(v) ? undefined : v),
+  z.coerce.number().nonnegative().optional(),
+)
+
+// --- Step 1: Order item lines ----------------------------------------------
+
+/**
+ * One line per item in the order. Export no. sits HERE, not on the header —
+ * a single order can bundle items filed under different exports, and forcing
+ * one export number for the whole order would misrepresent that.
+ */
+export const logisticsItemSchema = z.object({
+  id: z.string(),
+  itemDetail: z.string().default(''),
+  quantity: optionalNumber,
+  netWeight: optionalNumber,
+  grossWeight: optionalNumber,
+  idm: z.string().default(''),
+  /** Export orders only. Independent per item — two lines in the same order
+   *  can carry different export numbers, or share one. */
+  exportNo: z.string().optional(),
+  batchNo: z.string().optional(),
+})
+export type LogisticsItem = z.infer<typeof logisticsItemSchema>
+
+export const emptyItem = (id: string): LogisticsItem => ({
+  id, itemDetail: '', quantity: undefined, netWeight: undefined, grossWeight: undefined,
+  idm: '', exportNo: '', batchNo: '',
+})
+
+// --- Step 1: Order details --------------------------------------------------
 export const consignmentSchema = z
   .object({
     orderType: z.enum(ORDER_TYPES),
@@ -30,22 +69,17 @@ export const consignmentSchema = z
     originCity: z.string().optional(),
     originProvince: z.string().optional(),
     customerName: z.string().min(1, 'Customer name is required'),
-    itemDetail: z.string().min(1, 'Item detail is required'),
-    quantity: z.number().positive('Quantity must be greater than 0'),
-    netWeight: z.number().min(0, 'Net weight cannot be negative'),
-    grossWeight: z.number().min(0, 'Gross weight cannot be negative'),
-    // IDM is captured for every order. Export orders also carry an export no.
-    idm: z.string().min(1, 'IDM is required'),
-    exportNo: z.string().optional(),
-    batchNo: z.string().optional(), // optional per spec
+    items: z.array(logisticsItemSchema).default([]),
+    /** When the order was first raised — upstream of any transport planning. */
+    requisitionDate: z.string().optional(),
+    /** When the customer actually needs it. Drives the delay-vs-delivery
+     *  figure shown on the list, same convention as importsStatus. */
+    requiredDate: z.string().optional(),
   })
   .superRefine((val, ctx) => {
     if (val.orderType === 'Export') {
       if (!val.originCountry?.trim()) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['originCountry'], message: 'Country of origin is required for exports' })
-      }
-      if (!val.exportNo?.trim()) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['exportNo'], message: 'Export no. is required for exports' })
       }
     } else {
       if (!val.originCity?.trim()) {
@@ -55,9 +89,26 @@ export const consignmentSchema = z
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['originProvince'], message: 'Province is required for local orders' })
       }
     }
-    if (val.grossWeight > 0 && val.netWeight > val.grossWeight) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['netWeight'], message: 'Net weight cannot exceed gross weight' })
+    if (val.items.length === 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['items'], message: 'Add at least one item' })
     }
+    val.items.forEach((item, i) => {
+      if (!item.itemDetail) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['items', i, 'itemDetail'], message: 'Item detail is required' })
+      }
+      if (item.quantity === undefined || item.quantity <= 0) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['items', i, 'quantity'], message: 'Quantity must be greater than 0' })
+      }
+      if (!item.idm) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['items', i, 'idm'], message: 'IDM is required' })
+      }
+      if (val.orderType === 'Export' && !item.exportNo?.trim()) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['items', i, 'exportNo'], message: 'Export no. is required for exports' })
+      }
+      if (item.grossWeight !== undefined && item.netWeight !== undefined && item.netWeight > item.grossWeight) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['items', i, 'netWeight'], message: 'Net weight cannot exceed gross weight' })
+      }
+    })
   })
 
 // --- Step 2: Transportation -----------------------------------------------
@@ -69,16 +120,33 @@ export const transportationSchema = z.object({
   // delayDays is derived (gate out - dispatch note) and never keyed in.
   quotedFreight: z.number().min(0).optional(),
   actualFreight: z.number().min(0).optional(),
-  // ratePerWeight is derived (actual freight / gross weight) and never keyed in.
+  // ratePerWeight is derived from actual freight ÷ the SUM of every item's
+  // gross weight — never keyed in, and never a single item's weight standing
+  // in for the whole order.
   actualDeliveryDate: z.string().optional(),
   originFactory: z.string().optional(),
   destination: z.string().optional(),
 })
 
-// --- Step 3: Shipping ------------------------------------------------------
+// --- Step 3: Shipping --------------------------------------------------------
+
+/**
+ * One line per physical container. Split out because a single shipment
+ * routinely mixes container types (e.g. two 40' plus one 20' for an
+ * over-flow lot), and a single "type" field can only ever describe one of
+ * them.
+ */
+export const logisticsContainerSchema = z.object({
+  id: z.string(),
+  containerNo: z.string().optional(),
+  containerType: z.string().default(''),
+})
+export type LogisticsContainer = z.infer<typeof logisticsContainerSchema>
+
+export const emptyContainer = (id: string): LogisticsContainer => ({ id, containerNo: '', containerType: '' })
+
 export const shippingSchema = z.object({
-  containerCount: z.number().int().min(0).optional(),
-  containerType: z.string().optional(),
+  containers: z.array(logisticsContainerSchema).default([]),
   pol: z.string().optional(), // Port of Loading
   pod: z.string().optional(), // Port of Discharge
   shippingLine: z.string().optional(),
@@ -133,13 +201,9 @@ export const consignmentDraftSchema = z
     originCity: z.string().optional(),
     originProvince: z.string().optional(),
     customerName: z.string().min(1, 'Customer name is required'),
-    itemDetail: z.string().min(1, 'Item detail is required'),
-    quantity: z.number().positive('Quantity must be greater than 0'),
-    netWeight: z.number().min(0),
-    grossWeight: z.number().min(0),
-    idm: z.string().min(1, 'IDM is required'),
-    exportNo: z.string().optional(),
-    batchNo: z.string().optional(),
+    items: z.array(logisticsItemSchema).default([]),
+    requisitionDate: z.string().optional(),
+    requiredDate: z.string().optional(),
   })
   .merge(transportationSchema)
   .merge(shippingSchema)
@@ -154,13 +218,9 @@ export const DRAFT_DEFAULT_VALUES: LogisticsDraft = {
   originCity: '',
   originProvince: '',
   customerName: '',
-  itemDetail: '',
-  quantity: 0,
-  netWeight: 0,
-  grossWeight: 0,
-  idm: '',
-  exportNo: '',
-  batchNo: '',
+  items: [emptyItem('item-1')],
+  requisitionDate: '',
+  requiredDate: '',
   transporterName: '',
   vehicleType: '',
   gateOutDate: '',
@@ -170,8 +230,7 @@ export const DRAFT_DEFAULT_VALUES: LogisticsDraft = {
   actualDeliveryDate: '',
   originFactory: '',
   destination: '',
-  containerCount: 0,
-  containerType: '',
+  containers: [],
   pol: '',
   pod: '',
   shippingLine: '',
@@ -206,7 +265,9 @@ export interface WizardStepDef {
 
 // Five steps per the Logistics spec: Order, Transportation, Shipping,
 // Expenditures, Status. The `fields` arrays are what the wizard runs
-// step-level validation against on each Next.
+// step-level validation against on each Next click. Naming an array field
+// (`items`, `containers`) validates every row in it, same convention as
+// importsStatus.
 export const WIZARD_STEPS: WizardStepDef[] = [
   {
     step: 1,
@@ -214,7 +275,7 @@ export const WIZARD_STEPS: WizardStepDef[] = [
     label: 'Order Details',
     fields: [
       'orderType', 'originCountry', 'originCity', 'originProvince', 'customerName',
-      'itemDetail', 'quantity', 'netWeight', 'grossWeight', 'idm', 'exportNo', 'batchNo',
+      'items', 'requisitionDate', 'requiredDate',
     ],
   },
   {
@@ -231,7 +292,7 @@ export const WIZARD_STEPS: WizardStepDef[] = [
     key: 'shipping',
     label: 'Shipping',
     fields: [
-      'containerCount', 'containerType', 'pol', 'pod', 'shippingLine', 'clearingAgent',
+      'containers', 'pol', 'pod', 'shippingLine', 'clearingAgent',
       'bookingNo', 'portInDate', 'etdSailingDate', 'croArrivalDate', 'actualArrivalDate',
     ],
   },
@@ -285,8 +346,46 @@ export function daysBetween(fromISO?: string, toISO?: string): number | null {
   return Math.round((b - a) / 86_400_000)
 }
 
-/** Actual freight per unit of gross weight. Null if either input is missing/zero. */
-export function ratePerWeight(actualFreight?: number, grossWeight?: number): number | null {
-  if (!actualFreight || !grossWeight) return null
-  return actualFreight / grossWeight
+/** How late the order will actually land against when it was required.
+ *  Positive = late, zero/negative = on time or ahead. actualDeliveryDate is
+ *  the closest thing this schema has to importsStatus's ETA — the date goods
+ *  reach QFL (export) or the customer (local, which closes the order). */
+export function requiredVsDeliveryDelay(d: { requiredDate?: string; actualDeliveryDate?: string }): number | null {
+  return daysBetween(d.requiredDate, d.actualDeliveryDate)
+}
+
+/** Total quantity across every item line. */
+export const totalQuantity = (items: LogisticsItem[]) =>
+  items.reduce((s, it) => s + (it.quantity ?? 0), 0)
+
+/** Total net weight across every item line, in kg. */
+export const totalNetWeight = (items: LogisticsItem[]) =>
+  items.reduce((s, it) => s + (it.netWeight ?? 0), 0)
+
+/** Total gross weight across every item line, in kg — this is what freight
+ *  rate is actually calculated against, never one item's weight alone. */
+export const totalGrossWeight = (items: LogisticsItem[]) =>
+  items.reduce((s, it) => s + (it.grossWeight ?? 0), 0)
+
+/** Actual freight per unit of gross weight, summed across all items.
+ *  Null if either input is missing/zero. */
+export function ratePerWeight(actualFreight: number | undefined, items: LogisticsItem[]): number | null {
+  const gross = totalGrossWeight(items)
+  if (!actualFreight || !gross) return null
+  return actualFreight / gross
+}
+
+/** Every distinct export number across the order's items — an order can
+ *  legitimately carry more than one. Empty/blank entries excluded. */
+export const exportNumbers = (items: LogisticsItem[]) =>
+  [...new Set(items.map((it) => it.exportNo?.trim()).filter((x): x is string => !!x))]
+
+/** Named gaps for one item line — mirrors importsStatus's itemPendingFields. */
+export function itemPendingFields(item: LogisticsItem, orderType: OrderType): string[] {
+  const out: string[] = []
+  if (!item.itemDetail) out.push('Item detail')
+  if (item.quantity === undefined) out.push('Quantity')
+  if (!item.idm) out.push('IDM')
+  if (orderType === 'Export' && !item.exportNo) out.push('Export no.')
+  return out
 }

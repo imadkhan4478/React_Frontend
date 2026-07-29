@@ -7,7 +7,7 @@ import { can } from '@/lib/roleAccess'
 import { StatusPill, Tag, PaymentDot } from './components/atoms'
 import { pkr, fx, dateShort, days as daysFmt, num, etaChain } from './format'
 import {
-  getConsignment, pkrValue, slippageDays, daysAtPort, freeDaysLeft,
+  getConsignment, pkrValue, slippageDays, daysAtPort, freeDaysLeft, requiredDelayDays,
 } from '@/lib/importsStatusData'
 import { WIZARD_STEPS } from './schema'
 
@@ -58,6 +58,7 @@ export function ImportsStatusDetail() {
   const days = daysAtPort(row)
   const left = freeDaysLeft(row)
   const slip = slippageDays(row)
+  const reqDelay = requiredDelayDays(row)
 
   return (
     <div className="space-y-4 pb-16">
@@ -86,8 +87,13 @@ export function ImportsStatusDetail() {
       </div>
 
       {/* key figures */}
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-4 lg:grid-cols-7">
         <KeyFigure label="Value" value={fx(row.foreignValue, row.currency)} sub={pkr(pkrValue(row))} />
+        <KeyFigure
+          label="Required by" value={dateShort(row.requiredDate)}
+          sub={reqDelay === null ? 'Needs a required date + ETA' : reqDelay <= 0 ? (reqDelay === 0 ? 'On time' : `${-reqDelay}d ahead`) : `${reqDelay}d late vs. ETA`}
+          warn={reqDelay !== null && reqDelay > 0}
+        />
         <KeyFigure label="ETD" value={dateShort(row.etd)} sub={row.items[0]?.itemName ?? ''} />
         <KeyFigure
           label="ETA" value={dateShort(row.eta)}
@@ -105,7 +111,7 @@ export function ImportsStatusDetail() {
       </div>
 
       {row.missing.length > 0 && (
-        <div className="rounded-r border-l-4 border-[var(--color-warning)] bg-[var(--color-warning-soft)] px-3.5 py-2.5 text-sm text-[var(--color-warning)]">
+        <div className="rounded-r border-l-4 border-[var(--color-watch)] bg-[var(--color-watch-bg)] px-3.5 py-2.5 text-sm text-[var(--color-watch)]">
           <b className="font-semibold">Pending information:</b> {row.missing.join(', ')}.{' '}
           Recorded as a draft — nothing here blocks the consignment progressing.
         </div>
@@ -127,6 +133,8 @@ export function ImportsStatusDetail() {
           <Field label="Supplier" value={row.supplier} span={2} />
           <Field label="Country of origin" value={row.origin} />
           <Field label="Currency" value={row.currency} mono />
+          <Field label="Requisition date" value={dateShort(row.requisitionDate)} mono />
+          <Field label="Required date" value={dateShort(row.requiredDate)} mono />
         </FieldGrid>
 
         <div className="mt-4 overflow-auto rounded-lg border border-line">
@@ -275,8 +283,8 @@ export function ImportsStatusDetail() {
 
 function KeyFigure({ label, value, sub, warn }: { label: string; value: string; sub?: string; warn?: boolean }) {
   return (
-    <div className={`bg-surface px-3.5 py-2.5 ${warn ? 'bg-[var(--color-warning-soft)]' : ''}`}>
-      <div className={`text-[10px] font-semibold uppercase tracking-wide ${warn ? 'text-[var(--color-warning)]' : 'text-muted'}`}>{label}</div>
+    <div className={`bg-surface px-3.5 py-2.5 ${warn ? 'bg-[var(--color-watch-bg)]' : ''}`}>
+      <div className={`text-[10px] font-semibold uppercase tracking-wide ${warn ? 'text-[var(--color-watch)]' : 'text-muted'}`}>{label}</div>
       <div className="mt-0.5 truncate text-[15px] font-semibold tabular-nums">{value}</div>
       {sub && <div className="mt-0.5 truncate text-[10.5px] text-muted">{sub}</div>}
     </div>

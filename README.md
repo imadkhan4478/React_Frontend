@@ -42,8 +42,8 @@ Ten sections, reachable from the sidebar:
 | **Purchases** | Purchase orders by supplier / branch / category with KPIs, charts, and a searchable table. |
 | **Inventory** | Current stock levels, out-of-stock / below-reorder risk, and stock-runway insights. |
 | **Imports** | Import shipments, values, and customs-clearance status. |
-| **Imports Status** | Consignment tracking with a multi-step data-entry wizard (teammate-owned). |
-| **Logistics Status** | Export / local order tracking with a five-step data-entry wizard — **scaffold only** for now: the list and detail screens are placeholders, no real records yet. |
+| **Imports Status** | Consignment tracking with a seven-step data-entry wizard. Step 1 carries an **Incoterm** field (FOB / CIF / CFR / EXW / DAP) alongside requisition/required dates with a live delay readout — a consignment marked FOB and past Under Production is what Trucking Status's live request feed picks up. |
+| **Logistics Status** | Export / local order tracking with a five-step data-entry wizard. An order carries **multiple items** (each with its own quantity, weights, IDM, and — for exports — its own export number, since one order can be filed under several exports) and **multiple containers**. List, wizard, and detail are all real screens now. |
 | **Trucking Status** | Vehicle-movement jobs (Intrafactory / Outbound / Inbound) with a four-step data-entry wizard covering movement details, per-vehicle tracking, freight & payment, and a delivered-fraction rollup. Its list also surfaces live, never-copied "open request" rows read straight from Logistics Status and Imports Status once they're past production — see [Data & the backend](#data--the-backend). |
 | **Logistics** | Export shipments, packing, transport, and documentation. |
 | **Reports** | A custom report builder — pick a source, columns, and filters, then export. |
@@ -190,6 +190,17 @@ calls. **The pages don't change**: same data shapes in, same UI out.
 
 This keeps the two workstreams cleanly separated and lets the UI be built,
 reviewed, and demoed now without waiting on the backend.
+
+**Status colours:** every status pill/tag/badge across Imports Status,
+Logistics Status and Trucking Status resolves its colour through
+`statusColors()` in `src/theme/tokens.ts`, keyed off the real CSS custom
+properties defined in `src/index.css` (`--color-risk` / `--color-watch` /
+`--color-healthy` / `--color-info`, each with a matching `-bg`). The Imports
+Status module's local atoms previously referenced a different, nonexistent
+set of variable names (`--color-warning`, `--color-danger`, etc.) — nothing
+crashed, but every pill/tag/dot rendered colourless. Fixed by pointing them
+at the real tokens; the mapping (danger→risk, warning→watch, success→healthy,
+info→info) is documented at the top of `src/features/importsStatus/components/atoms.tsx`.
 
 ---
 
