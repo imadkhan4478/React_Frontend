@@ -11,6 +11,8 @@ import dashboardLight from '@/assets/dashboard-hero-light.png'
 import dashboardDark from '@/assets/dashboard-hero-dark.png'
 import logisticsLight from '@/assets/logistics-hero-light.png'
 import logisticsDark from '@/assets/logistics-hero-dark.png'
+import importsLight from '@/assets/imports-hero-light.png'
+import importsDark from '@/assets/imports-hero-dark.png'
 
 /**
  * Ambient, subject-related backdrop: a slow, soft "smoke" of blurred,
@@ -51,6 +53,7 @@ const MODULE_ICON: Partial<Record<PageKey | 'login', LucideIcon>> = {
 const MODULE_PHOTOS: Partial<Record<PageKey, { light: string; dark: string }>> = {
   dashboard: { light: dashboardLight, dark: dashboardDark },
   logistics: { light: logisticsLight, dark: logisticsDark },
+  imports: { light: importsLight, dark: importsDark },
 }
 
 function ModulePhoto({ photo, className }: { photo: { light: string; dark: string }; className?: string }) {
