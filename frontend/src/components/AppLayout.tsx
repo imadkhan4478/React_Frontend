@@ -7,13 +7,14 @@ import type { PageKey } from '@/theme/tokens'
 
 /** Map the current path to its module key so each section gets its own
  * subject-themed backdrop. Longest matching path wins (so /imports-status
- * doesn't resolve to /imports). Imports Status and Logistics Status are
- * grouped under one "Operations" nav entry but keep their own distinct
- * theming identity, so they're resolved by their own PageKey, not
- * `dataEntry`'s. */
+ * doesn't resolve to /imports). Imports Status, Logistics Status, and
+ * Trucking Status are grouped under one "Operations" nav entry but keep
+ * their own distinct theming identity, so they're resolved by their own
+ * PageKey, not `dataEntry`'s. */
 function moduleForPath(pathname: string): PageKey {
   if (pathname === '/imports-status' || pathname.startsWith('/imports-status/')) return 'importsStatus'
   if (pathname === '/logistics-status' || pathname.startsWith('/logistics-status/')) return 'logisticsStatus'
+  if (pathname === '/trucking-status' || pathname.startsWith('/trucking-status/')) return 'truckingStatus'
   const match = [...PAGE_DEFS]
     .sort((a, b) => b.path.length - a.path.length)
     .find((p) => pathname === p.path || pathname.startsWith(p.path + '/'))

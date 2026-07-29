@@ -1,5 +1,5 @@
 import {
-  Truck, Plane, Warehouse, ShoppingCart, Container, Globe,
+  Truck, Plane, Warehouse, ShoppingCart, Container, Globe, Route,
   ClipboardList, BarChart3, MessageSquare, Gauge, Users,
   type LucideIcon,
 } from 'lucide-react'
@@ -38,6 +38,7 @@ const MODULE_ICON: Partial<Record<PageKey | 'login', LucideIcon>> = {
   imports: Plane,
   importsStatus: Container,
   logisticsStatus: Truck,
+  truckingStatus: Route,
   dataEntry: ClipboardList,
   logistics: Truck,
   reports: BarChart3,
