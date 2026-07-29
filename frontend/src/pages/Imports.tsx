@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { PageHeader } from '@/components/PageHeader'
 import { FilterBar } from '@/components/FilterBar'
 import { MultiSelectFilter } from '@/components/MultiSelectFilter'
+import { DateRangeFilter } from '@/components/DateRangeFilter'
 import { Disclosure } from '@/components/Disclosure'
 import { KpiCard } from '@/components/KpiCard'
 import { HeroStat } from '@/components/HeroStat'
@@ -12,10 +13,10 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { CategoryBar } from '@/components/charts/CategoryBar'
 import { Donut } from '@/components/charts/Donut'
 import { RankedBar } from '@/components/charts/RankedBar'
-import { money, shortDate, weeklyTrendPoints } from '@/lib/format'
+import { money, shortDate, weeklyTrendPoints, monthInRange } from '@/lib/format'
 import {
   getImports, type ImportRow,
-  importStatusList, importBranchList, importCategoryList, importSupplierList,
+  importStatusList, importDocumentationStatusList, importBranchList, importCategoryList, importSupplierList,
   importCustomerList, importCountryList, importShippingLineList, importModeOfShipmentList, importBankList,
 } from '@/lib/mockData/imports'
 
@@ -36,20 +37,27 @@ function sumBy(rows: ImportRow[], key: 'supplier_country' | 'category' | 'suppli
 
 export function Imports() {
   const [status, setStatus] = useState<string[]>([])
+  const [documentationStatus, setDocumentationStatus] = useState<string[]>([])
   const [branch, setBranch] = useState<string[]>([])
   const [category, setCategory] = useState<string[]>([])
   const [supplier, setSupplier] = useState<string[]>([])
   const [customer, setCustomer] = useState<string[]>([])
   const [country, setCountry] = useState<string[]>([])
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [shippingLine, setShippingLine] = useState<string[]>([])
   const [modeOfShipment, setModeOfShipment] = useState<string[]>([])
   const [bank, setBank] = useState<string[]>([])
   const [search, setSearch] = useState('')
   const [insightTab, setInsightTab] = useState<(typeof INSIGHT_TABS)[number]['value']>('status')
 
+  const filtered = useMemo(
+    () => getImports({ status, documentationStatus, branch, category, supplier, customer, country, shippingLine, modeOfShipment, bank }),
+    [status, documentationStatus, branch, category, supplier, customer, country, shippingLine, modeOfShipment, bank],
+  )
   const data = useMemo(
-    () => getImports({ status, branch, category, supplier, customer, country, shippingLine, modeOfShipment, bank }),
-    [status, branch, category, supplier, customer, country, shippingLine, modeOfShipment, bank],
+    () => filtered.filter((r) => monthInRange(r.demand_date, dateFrom, dateTo)),
+    [filtered, dateFrom, dateTo],
   )
 
   const tableRows = useMemo(() => {
@@ -87,18 +95,20 @@ export function Imports() {
     <div className="flex flex-col gap-6">
       <PageHeader title="Imports" subtitle="Import shipments, values, and customs clearance" module="imports" />
 
-      <FilterBar>
-        <MultiSelectFilter label="Show imports" options={importStatusList} value={status} onChange={setStatus} />
+      <FilterBar search={{ value: search, onChange: setSearch, placeholder: 'Search by import ref, customer, or supplier…' }}>
+        <DateRangeFilter label="ETA" from={dateFrom} to={dateTo} onFromChange={setDateFrom} onToChange={setDateTo} />
         <MultiSelectFilter label="Works" options={importBranchList} value={branch} onChange={setBranch} />
+        <MultiSelectFilter label="Supplier" options={importSupplierList} value={supplier} onChange={setSupplier} />
+        <MultiSelectFilter label="Customer" options={importCustomerList} value={customer} onChange={setCustomer} />
+        <MultiSelectFilter label="Country" options={importCountryList} value={country} onChange={setCountry} />
         <MultiSelectFilter label="Item Category" options={importCategoryList} value={category} onChange={setCategory} />
+        <MultiSelectFilter label="Show imports" options={importStatusList} value={status} onChange={setStatus} />
+        <MultiSelectFilter label="Documentation Status" options={importDocumentationStatusList} value={documentationStatus} onChange={setDocumentationStatus} />
       </FilterBar>
 
-      <Disclosure title="More filters — supplier, customer, country, shipping line, mode, bank">
+      <Disclosure title="More filters — shipping line, mode, bank">
         <div className="flex flex-wrap gap-4 pb-4">
           {[
-            { label: 'Supplier', options: importSupplierList, value: supplier, onChange: setSupplier },
-            { label: 'Customer', options: importCustomerList, value: customer, onChange: setCustomer },
-            { label: 'Country', options: importCountryList, value: country, onChange: setCountry },
             { label: 'Shipping Line', options: importShippingLineList, value: shippingLine, onChange: setShippingLine },
             { label: 'Mode of Shipment', options: importModeOfShipmentList, value: modeOfShipment, onChange: setModeOfShipment },
             { label: 'Bank', options: importBankList, value: bank, onChange: setBank },
@@ -144,14 +154,8 @@ export function Imports() {
         </ChartCard>
       </div>
 
-      <Disclosure title="View data / search">
-        <div className="flex flex-col gap-3 pb-4">
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by import ref, customer, or supplier…"
-            className="h-10 w-full max-w-md rounded-lg border border-line bg-surface px-3 text-sm text-ink placeholder:text-muted"
-          />
+      <Disclosure title="View data">
+        <div className="pb-4">
           <DataTable columns={columns} rows={tableRows as unknown as Record<string, unknown>[]} statusColumn="current_status" height={420} />
         </div>
       </Disclosure>

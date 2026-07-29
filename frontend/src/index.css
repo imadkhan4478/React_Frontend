@@ -101,6 +101,17 @@
   mask-image: linear-gradient(to bottom, black, transparent 85%);
 }
 
+/* Same grid, fixed white lines — for use on top of a colored/gradient
+   surface (e.g. HeroStat) where the theme-aware --line variable would be
+   invisible or the wrong contrast. */
+.bg-grid-texture-on-brand {
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.12) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.12) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse at top right, black, transparent 70%);
+}
+
 @keyframes fade-in-up {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
@@ -123,17 +134,12 @@
 .animate-scale-in { animation: scale-in 150ms cubic-bezier(0.16, 1, 0.3, 1); }
 
 /* ---------------------------------------------------------------------------
-   Thematic background motion (ThemedBackground / login) — subject-related
-   field icons drift slowly over soft moving aurora blobs. Deliberately slow
-   and low-opacity: ambient texture, never something that pulls focus from
-   the content on top. All CSS-only (Recharts JS animation is unreliable
-   here; CSS keyframes are the safe path).
+   Thematic background motion (ThemedBackground / login) — soft moving
+   aurora blobs behind a single static per-module watermark icon.
+   Deliberately slow and low-opacity: ambient texture, never something that
+   pulls focus from the content on top. All CSS-only (Recharts JS animation
+   is unreliable here; CSS keyframes are the safe path).
 --------------------------------------------------------------------------- */
-@keyframes drift {
-  0%   { transform: translate(0, 0) rotate(0deg); }
-  50%  { transform: translate(var(--drift-x, 24px), var(--drift-y, -28px)) rotate(var(--drift-r, 8deg)); }
-  100% { transform: translate(0, 0) rotate(0deg); }
-}
 @keyframes aurora {
   0%   { transform: translate(0, 0) scale(1); }
   33%  { transform: translate(6%, -4%) scale(1.12); }
@@ -148,14 +154,13 @@
   50%      { transform: translateY(-10px); }
 }
 
-.animate-drift { animation: drift var(--drift-dur, 18s) ease-in-out infinite; }
 .animate-aurora { animation: aurora var(--aurora-dur, 24s) ease-in-out infinite; }
 .animate-route-dash { animation: route-dash 1.4s linear infinite; }
 .animate-float-bob { animation: float-bob 4s ease-in-out infinite; }
 
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in-up, .animate-fade-in, .animate-scale-in,
-  .animate-drift, .animate-aurora, .animate-route-dash, .animate-float-bob {
+  .animate-aurora, .animate-route-dash, .animate-float-bob {
     animation: none;
   }
 }

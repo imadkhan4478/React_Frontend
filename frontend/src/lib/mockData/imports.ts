@@ -8,6 +8,7 @@ export const SHIPPING_LINES = ['Maersk', 'MSC', 'CMA CGM', 'Hapag-Lloyd', 'COSCO
 export const MODES_OF_SHIPMENT = ['Sea', 'Air', 'Land'] as const
 export const BANKS = ['HBL', 'MCB', 'UBL', 'Meezan Bank'] as const
 const STATUSES = ['LC in Process', 'Sailing', 'In Transit', 'Under Custom Clearance', 'Arrived at Works', 'Order Cancelled'] as const
+const DOCUMENTATION_STATUSES = ['Complete', 'Incomplete'] as const
 
 export interface ImportRow {
   import_ref: string
@@ -19,6 +20,7 @@ export interface ImportRow {
   total_value_pkr: number
   total_wt_ton: number
   current_status: (typeof STATUSES)[number]
+  documentation_status: (typeof DOCUMENTATION_STATUSES)[number]
   shipping_line: string
   mode_of_shipment: string
   bank: string
@@ -38,6 +40,7 @@ function makeRow(i: number): ImportRow {
     total_value_pkr: randInt(rng, 500_000, 20_000_000),
     total_wt_ton: randInt(rng, 2, 400),
     current_status: choice(rng, STATUSES),
+    documentation_status: choice(rng, DOCUMENTATION_STATUSES),
     shipping_line: choice(rng, SHIPPING_LINES),
     mode_of_shipment: choice(rng, MODES_OF_SHIPMENT),
     bank: choice(rng, BANKS),
@@ -49,6 +52,7 @@ const ALL_IMPORTS: ImportRow[] = Array.from({ length: 55 }, (_, i) => makeRow(i)
 
 export interface ImportFilters {
   status?: string[]
+  documentationStatus?: string[]
   branch?: string[]
   category?: string[]
   supplier?: string[]
@@ -67,6 +71,7 @@ export function getImports(filters: ImportFilters = {}): ImportRow[] {
   return ALL_IMPORTS.filter(
     (row) =>
       matches(row.current_status, filters.status) &&
+      matches(row.documentation_status, filters.documentationStatus) &&
       matches(row.branch, filters.branch) &&
       matches(row.category, filters.category) &&
       matches(row.supplier, filters.supplier) &&
@@ -79,6 +84,7 @@ export function getImports(filters: ImportFilters = {}): ImportRow[] {
 }
 
 export const importStatusList = [...STATUSES]
+export const importDocumentationStatusList = [...DOCUMENTATION_STATUSES]
 export const importBranchList = [...BRANCHES]
 export const importCategoryList = [...ITEM_CATEGORIES]
 export const importSupplierList = [...SUPPLIERS]

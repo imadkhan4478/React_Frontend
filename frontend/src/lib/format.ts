@@ -29,6 +29,15 @@ export function agingBuckets(days: number[]): { bucket: string; orders: number }
   return AGING_ORDER.map((bucket) => ({ bucket, orders: counts[bucket] }))
 }
 
+/** Whether `date` falls within a "YYYY-MM" from/to range (either bound may
+ * be '' for unbounded) — backs every DateRangeFilter across the app. */
+export function monthInRange(date: Date, from: string, to: string): boolean {
+  const ym = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+  if (from && ym < from) return false
+  if (to && ym > to) return false
+  return true
+}
+
 function startOfWeek(d: Date): Date {
   const date = new Date(d)
   const day = date.getDay()
