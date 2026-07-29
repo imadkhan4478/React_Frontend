@@ -12,3 +12,4 @@ frontend/.vite/
 # Throwaway browser-verification scripts + screenshots (never commit)
 frontend/_verify*
 frontend/_debug*
+frontend/_v_*
