@@ -13,6 +13,8 @@ import logisticsLight from '@/assets/logistics-hero-light.png'
 import logisticsDark from '@/assets/logistics-hero-dark.png'
 import importsLight from '@/assets/imports-hero-light.png'
 import importsDark from '@/assets/imports-hero-dark.png'
+import loginLight from '@/assets/login-hero-light.png'
+import loginDark from '@/assets/login-hero-dark.png'
 
 /**
  * Ambient, subject-related backdrop: a slow, soft "smoke" of blurred,
@@ -51,10 +53,11 @@ const MODULE_ICON: Partial<Record<PageKey | 'login', LucideIcon>> = {
  * Add an entry here (plus a light/dark import above) to give another
  * module the same "photo behind glass cards" look Dashboard and
  * Logistics have. */
-const MODULE_PHOTOS: Partial<Record<PageKey, { light: string; dark: string }>> = {
+const MODULE_PHOTOS: Partial<Record<PageKey | 'login', { light: string; dark: string }>> = {
   dashboard: { light: dashboardLight, dark: dashboardDark },
   logistics: { light: logisticsLight, dark: logisticsDark },
   imports: { light: importsLight, dark: importsDark },
+  login: { light: loginLight, dark: loginDark },
 }
 
 function ModulePhoto({ photo, className }: { photo: { light: string; dark: string }; className?: string }) {
@@ -83,7 +86,7 @@ export function ThemedBackground({ module = 'dashboard', variant = 'ambient', cl
   // instead of a per-module icon, for any module listed in MODULE_PHOTOS.
   // It's a single static <img> — no blur/animation — so it costs one
   // paint, not a per-frame one.
-  const photo = module !== 'login' ? MODULE_PHOTOS[module] : undefined
+  const photo = MODULE_PHOTOS[module]
   if (photo) return <ModulePhoto photo={photo} className={className} />
 
   const Icon = MODULE_ICON[module] ?? Globe
