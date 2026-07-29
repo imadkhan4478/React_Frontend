@@ -1,32 +1,38 @@
 /**
  * TEMPORARY frontend-only auth stub. There's no backend yet (a teammate
- * owns that separately) — this just gates the UI so pages/roles can be
- * built and reviewed now. Plaintext passwords are fine here since this
+ * owns that separately) — this just gates the UI so pages/permissions can
+ * be built and reviewed now. Plaintext passwords are fine here since this
  * isn't real security, only a UI demo gate; it'll be replaced wholesale
  * once a real login API exists (delete this file, not edit it — real
  * sessions need an httpOnly cookie, not a localStorage user object).
  */
 
-import type { Role } from './roleAccess'
+import type { Permission } from './roleAccess'
 
 export interface MockUser {
   username: string
   password: string
   name: string
-  role: Role
+  isAdmin: boolean
+  permissions: Permission[]
 }
 
 const DEFAULT_USERS: MockUser[] = [
-  { username: 'admin', password: 'admin123', name: 'Admin User', role: 'admin' },
-  { username: 'manager', password: 'admin123', name: 'Manager User', role: 'manager' },
-  { username: 'entry', password: 'admin123', name: 'Entry User', role: 'entry' },
-  { username: 'viewer', password: 'admin123', name: 'Viewer User', role: 'viewer' },
+  { username: 'admin', password: 'admin123', name: 'Admin User', isAdmin: true, permissions: [] },
+  {
+    username: 'manager', password: 'admin123', name: 'Manager User', isAdmin: false,
+    permissions: ['assistant', 'dashboards', 'reports', 'operationsEdit'],
+  },
+  { username: 'entry', password: 'admin123', name: 'Entry User', isAdmin: false, permissions: ['assistant', 'operationsEdit'] },
+  { username: 'viewer', password: 'admin123', name: 'Viewer User', isAdmin: false, permissions: ['assistant', 'dashboards', 'reports'] },
 ]
 
 // Accounts an admin creates need to survive a reload, same as the session
 // itself — stored alongside it in localStorage until a real backend/DB
-// owns the user directory.
-const DIRECTORY_KEY = 'qgirs-user-directory'
+// owns the user directory. Versioned key: the old role-shaped directory
+// (username/password/name/role) isn't compatible with the isAdmin +
+// permissions shape, so this reseeds fresh instead of crashing on stale data.
+const DIRECTORY_KEY = 'qgirs-user-directory-v2'
 
 function loadUsers(): MockUser[] {
   const raw = window.localStorage.getItem(DIRECTORY_KEY)
@@ -42,16 +48,16 @@ function saveUsers(users: MockUser[]) {
 export function mockLogin(username: string, password: string) {
   const user = loadUsers().find((u) => u.username === username && u.password === password)
   if (!user) throw new Error('Invalid username or password')
-  return { username: user.username, name: user.name, role: user.role }
+  return { username: user.username, name: user.name, isAdmin: user.isAdmin, permissions: user.permissions }
 }
 
-/** Admin-only: every account except its password, for the User Management list. */
+/** Every account except its password, for the User Management list. */
 export function listUsers(): Omit<MockUser, 'password'>[] {
   return loadUsers().map(({ password: _password, ...rest }) => rest)
 }
 
-/** Admin-only: create a new account — name, username, password, role. */
-export function createUser(input: { name: string; username: string; password: string; role: Role }): void {
+/** Admin-only: create a new account — name, username, password, admin flag, permissions. */
+export function createUser(input: { name: string; username: string; password: string; isAdmin: boolean; permissions: Permission[] }): void {
   const username = input.username.trim()
   const name = input.name.trim()
   if (!name) throw new Error('Name is required')
@@ -63,6 +69,18 @@ export function createUser(input: { name: string; username: string; password: st
     throw new Error('That username is already taken')
   }
 
-  users.push({ username, password: input.password, name, role: input.role })
+  users.push({ username, password: input.password, name, isAdmin: input.isAdmin, permissions: input.permissions })
+  saveUsers(users)
+}
+
+/** Admin-only: change an existing account's admin flag and/or permission
+ * checklist — the ongoing edit path, as opposed to createUser's one-time
+ * initial grant. Username/password/name aren't touched here. */
+export function updateUserAccess(username: string, updates: { isAdmin: boolean; permissions: Permission[] }): void {
+  const users = loadUsers()
+  const target = users.find((u) => u.username === username)
+  if (!target) throw new Error('Account not found')
+  target.isAdmin = updates.isAdmin
+  target.permissions = updates.permissions
   saveUsers(users)
 }

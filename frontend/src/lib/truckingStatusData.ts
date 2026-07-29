@@ -152,8 +152,8 @@ const EDITS = new Map<string, TruckingRow>()
 // harmless once the exports are confirmed correct, and cheap insurance if a
 // future refactor of either store renames something out from under this file.
 //
-// Remaining known gap: Imports has no FOB/incoterm flag yet (see isFob()
-// below) — the user will add one when Imports is next edited.
+// Imports now carries a real `incoterm` field (importsStatus/schema.ts) —
+// deriveFromImportsFob() below checks it directly, no placeholder heuristic.
 // ---------------------------------------------------------------------------
 
 /**

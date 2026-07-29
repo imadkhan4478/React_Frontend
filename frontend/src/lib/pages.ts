@@ -3,7 +3,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import type { PageKey } from '@/theme/tokens'
-import { pagesForRole } from './roleAccess'
+import { pagesForUser, type Access } from './roleAccess'
 
 export interface PageDef {
   key: PageKey
@@ -38,11 +38,16 @@ export const PAGE_DEFS: PageDef[] = [
   { key: 'userManagement', label: 'User Management', path: '/user-management', icon: Users },
 ]
 
-/** Where to land a given role right after login (or when they're bounced
- * off a page they can't access) — the first page in PAGE_DEFS order that
- * their role is allowed to see. */
-export function defaultPathForRole(role: string | undefined): string {
-  const allowed = pagesForRole(role)
+/** Where to land an account right after login (or when they're bounced off
+ * a page they can't access). Assistant is the intended default landing
+ * page for everyone, so it wins whenever the account can see it. Otherwise
+ * falls back to the first page in PAGE_DEFS order the account can see. */
+export function defaultPathForUser(access: Access | null | undefined): string {
+  const allowed = pagesForUser(access)
+  if (allowed.includes('assistant')) {
+    const assistantDef = PAGE_DEFS.find((p) => p.key === 'assistant')
+    if (assistantDef) return assistantDef.path
+  }
   const first = PAGE_DEFS.find((p) => allowed.includes(p.key))
   return first?.path ?? '/login'
 }
