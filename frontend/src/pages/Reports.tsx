@@ -8,13 +8,8 @@ import { DateRangeFilter } from '@/components/DateRangeFilter'
 import { Disclosure } from '@/components/Disclosure'
 import { KpiCard } from '@/components/KpiCard'
 import { HeroStat } from '@/components/HeroStat'
-import { InsightsCard } from '@/components/InsightsCard'
-import { ChartCard } from '@/components/ChartCard'
 import { DataTable, type Column } from '@/components/DataTable'
 import { StatusBadge } from '@/components/StatusBadge'
-import { CategoryBar } from '@/components/charts/CategoryBar'
-import { Donut } from '@/components/charts/Donut'
-import { RankedBar } from '@/components/charts/RankedBar'
 import { money, shortDate, weeklyTrendPoints, monthInRange } from '@/lib/format'
 import {
   getPurchases,
@@ -35,14 +30,6 @@ const MODULES = [
 ] as const
 
 type ModuleKey = (typeof MODULES)[number]['value']
-
-const INSIGHT_TABS = [
-  { value: 'branch', label: 'By Branch' },
-  { value: 'category', label: 'By Category' },
-  { value: 'status', label: 'By Status' },
-] as const
-
-type InsightTab = (typeof INSIGHT_TABS)[number]['value']
 
 interface Normalized {
   ref: string
@@ -108,7 +95,6 @@ export function Reports() {
   const [category, setCategory] = useState<string[]>([])
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
-  const [insightTab, setInsightTab] = useState<InsightTab>('branch')
   const [search, setSearch] = useState('')
 
   const isInventory = module === 'inventory'
@@ -139,9 +125,6 @@ export function Reports() {
   const trend = weeklyTrendPoints(
     data.map((r) => ({ date: r.date, value: isInventory ? r.value : r.value / 1_000_000 })),
   ).map((p) => ({ week: shortDate(p.week), value: Number(p.value.toFixed(2)) }))
-
-  const byBranch = sumBy(data, 'branch')
-  const byCategory = sumBy(data, 'category').slice(0, 8)
 
   const statusCounts = useMemo(() => {
     const map = new Map<string, number>()
@@ -206,42 +189,6 @@ export function Reports() {
         <KpiCard label="Branches" value={`${branches}`} />
         <KpiCard label="Top Branch" value={topBranch ?? '—'} sub="by value, current filter" />
         <KpiCard label="Status Types" value={`${statusCounts.length}`} />
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <InsightsCard
-          title="Breakdown"
-          tabs={INSIGHT_TABS}
-          active={insightTab}
-          onChange={setInsightTab}
-          className="lg:col-span-2"
-        >
-          {data.length === 0 && (
-            <p className="py-12 text-center text-sm text-muted">No records match the current filter.</p>
-          )}
-          {data.length > 0 && insightTab === 'branch' && (
-            <CategoryBar data={byBranch} category="branch" value="value" height={300} />
-          )}
-          {data.length > 0 && insightTab === 'category' && (
-            <RankedBar data={byCategory} category="category" value="value" height={300} />
-          )}
-          {data.length > 0 && insightTab === 'status' && (
-            <Donut labels={statusCounts.map((s) => s.label)} values={statusCounts.map((s) => s.value)} height={300} />
-          )}
-        </InsightsCard>
-
-        <ChartCard title="Status Split">
-          {statusCounts.length > 0 ? (
-            <Donut
-              labels={statusCounts.map((s) => s.label)}
-              values={statusCounts.map((s) => s.value)}
-              height={300}
-              compact
-            />
-          ) : (
-            <p className="py-12 text-center text-sm text-muted">No data.</p>
-          )}
-        </ChartCard>
       </div>
 
       <Disclosure title="View data / export">
