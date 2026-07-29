@@ -5,10 +5,6 @@ import { RequirePage } from '@/features/auth/RequirePage'
 import { RootRedirect } from '@/features/auth/RootRedirect'
 import { AppLayout } from '@/components/AppLayout'
 import { Dashboard } from '@/pages/Dashboard'
-import { Purchases } from '@/pages/Purchases'
-import { Inventory } from '@/pages/Inventory'
-import { Imports } from '@/pages/Imports'
-import { Logistics } from '@/pages/Logistics'
 import { Reports } from '@/pages/Reports'
 import { Assistant } from '@/pages/Assistant'
 import { UserManagement } from '@/pages/UserManagement'
@@ -27,10 +23,9 @@ function App() {
 
         <Route element={<ProtectedRoute />}>
           <Route element={<AppLayout />}>
+            {/* Purchases/Inventory/Imports/Logistics no longer have their
+                own routes — they're tabs inside Dashboard now. */}
             <Route path="/dashboard" element={<RequirePage pageKey="dashboard"><Dashboard /></RequirePage>} />
-            <Route path="/purchases" element={<RequirePage pageKey="purchases"><Purchases /></RequirePage>} />
-            <Route path="/inventory" element={<RequirePage pageKey="inventory"><Inventory /></RequirePage>} />
-            <Route path="/imports" element={<RequirePage pageKey="imports"><Imports /></RequirePage>} />
 
             {/* Consignment tracking + Logistics order tracking — grouped in
                 the sidebar as "Operations", gated together the same way. */}
@@ -50,7 +45,6 @@ function App() {
               </Route>
             </Route>
 
-            <Route path="/logistics" element={<RequirePage pageKey="logistics"><Logistics /></RequirePage>} />
             <Route path="/reports" element={<RequirePage pageKey="reports"><Reports /></RequirePage>} />
             <Route path="/assistant" element={<RequirePage pageKey="assistant"><Assistant /></RequirePage>} />
             <Route path="/user-management" element={<RequirePage pageKey="userManagement"><UserManagement /></RequirePage>} />

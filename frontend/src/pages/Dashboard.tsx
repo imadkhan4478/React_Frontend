@@ -4,6 +4,7 @@ import {
   Sparkles, Wallet, ArrowUpRight, ArrowDownRight, type LucideIcon,
 } from 'lucide-react'
 import { SegmentedControl } from '@/components/SegmentedControl'
+import { useSetPageModule } from '@/components/ActiveModule'
 import { Card } from '@/components/ui/card'
 import { RankedBar } from '@/components/charts/RankedBar'
 import { Donut } from '@/components/charts/Donut'
@@ -17,6 +18,10 @@ import {
   getHealth, getDashboardKpisRich, weeklyTrend, getAlerts,
   getSupplierPerformance, getStatusSplit, getAging,
 } from '@/lib/mockData/dashboard'
+import { Purchases } from '@/pages/Purchases'
+import { Inventory } from '@/pages/Inventory'
+import { Imports } from '@/pages/Imports'
+import { Logistics } from '@/pages/Logistics'
 
 const RANGE_OPTIONS = [
   { value: '4', label: '4W' }, { value: '8', label: '8W' }, { value: '12', label: '12W' },
@@ -25,6 +30,21 @@ const INSIGHT_TABS = [
   { value: 'suppliers', label: 'Suppliers' },
   { value: 'aging', label: 'Aging' },
 ] as const
+// Purchases/Inventory/Imports/Logistics used to be their own sidebar pages;
+// they're now tabs inside Dashboard (see App.tsx/lib/pages.ts) — this is
+// the one place that switches between the executive overview and each
+// module's own dashboard.
+const DASH_TABS = [
+  { value: 'overview', label: 'Overview' },
+  { value: 'purchases', label: 'Purchases' },
+  { value: 'inventory', label: 'Inventory' },
+  { value: 'imports', label: 'Imports' },
+  { value: 'logistics', label: 'Logistics' },
+] as const
+type DashTab = (typeof DASH_TABS)[number]['value']
+const TAB_MODULE = {
+  overview: 'dashboard', purchases: 'purchases', inventory: 'inventory', imports: 'imports', logistics: 'logistics',
+} as const
 
 const ALERT_ICON = { high: TriangleAlert, medium: CircleAlert, low: Info }
 
@@ -102,6 +122,8 @@ function StatTile({ label, value, delta, direction, goodWhen = 'down', spark, ic
 export function Dashboard() {
   const { colors } = useTheme()
   const { user } = useAuth()
+  const [tab, setTab] = useState<DashTab>('overview')
+  useSetPageModule(TAB_MODULE[tab])
   const [rangeWeeks, setRangeWeeks] = useState<'4' | '8' | '12'>('8')
   const [insightTab, setInsightTab] = useState<(typeof INSIGHT_TABS)[number]['value']>('suppliers')
 
@@ -123,6 +145,20 @@ export function Dashboard() {
 
   return (
     <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="font-display text-2xl font-bold text-navy">Dashboards</h1>
+          <p className="text-sm text-muted">Executive overview, plus each module's own dashboard</p>
+        </div>
+        <SegmentedControl options={DASH_TABS} value={tab} onChange={setTab} />
+      </div>
+
+      {tab === 'purchases' && <Purchases />}
+      {tab === 'inventory' && <Inventory />}
+      {tab === 'imports' && <Imports />}
+      {tab === 'logistics' && <Logistics />}
+
+      {tab === 'overview' && <>
       {/* Hero band — sits over the page-wide photo (ThemedBackground) like
           every other panel, just with more breathing room for the greeting
           and a few live stats. Even more transparent than the (already
@@ -256,6 +292,7 @@ export function Dashboard() {
           <Donut labels={statusSplit.labels} values={statusSplit.values} height={300} />
         </Panel>
       </div>
+      </>}
     </div>
   )
 }
