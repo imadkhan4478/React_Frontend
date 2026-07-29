@@ -13,6 +13,10 @@ import logisticsLight from '@/assets/logistics-hero-light.png'
 import logisticsDark from '@/assets/logistics-hero-dark.png'
 import importsLight from '@/assets/imports-hero-light.png'
 import importsDark from '@/assets/imports-hero-dark.png'
+import purchasesLight from '@/assets/purchases-hero-light.png'
+import purchasesDark from '@/assets/purchases-hero-dark.png'
+import inventoryLight from '@/assets/inventory-hero-light.png'
+import inventoryDark from '@/assets/inventory-hero-dark.png'
 import loginLight from '@/assets/login-hero-light.png'
 import loginDark from '@/assets/login-hero-dark.png'
 
@@ -49,25 +53,44 @@ const MODULE_ICON: Partial<Record<PageKey | 'login', LucideIcon>> = {
   login: Globe,
 }
 
+interface ModulePhotoSet {
+  light: string
+  dark: string
+  /** Scrim strength override (0-1). Pages built from many small,
+   * text-dense cards (filters, KPI grids, tables) need a stronger wash
+   * than Dashboard/Login's few large cards do — their bright/busy photo
+   * detail was bleeding through the low-opacity Card surface enough to
+   * hurt readability. Defaults to the original light 0.3 / dark 0.4. */
+  scrim?: { light: number; dark: number }
+}
+
+const DENSE_SCRIM = { light: 0.62, dark: 0.56 }
+
 /** Modules with a real photo instead of the icon+aurora treatment.
  * Add an entry here (plus a light/dark import above) to give another
  * module the same "photo behind glass cards" look Dashboard and
  * Logistics have. */
-const MODULE_PHOTOS: Partial<Record<PageKey | 'login', { light: string; dark: string }>> = {
+const MODULE_PHOTOS: Partial<Record<PageKey | 'login', ModulePhotoSet>> = {
   dashboard: { light: dashboardLight, dark: dashboardDark },
-  logistics: { light: logisticsLight, dark: logisticsDark },
-  imports: { light: importsLight, dark: importsDark },
+  logistics: { light: logisticsLight, dark: logisticsDark, scrim: DENSE_SCRIM },
+  imports: { light: importsLight, dark: importsDark, scrim: DENSE_SCRIM },
+  purchases: { light: purchasesLight, dark: purchasesDark, scrim: DENSE_SCRIM },
+  inventory: { light: inventoryLight, dark: inventoryDark, scrim: DENSE_SCRIM },
   login: { light: loginLight, dark: loginDark },
 }
 
-function ModulePhoto({ photo, className }: { photo: { light: string; dark: string }; className?: string }) {
+function ModulePhoto({ photo, className }: { photo: ModulePhotoSet; className?: string }) {
   const { dark } = useTheme()
+  const scrimOpacity = dark ? (photo.scrim?.dark ?? 0.4) : (photo.scrim?.light ?? 0.3)
   return (
     <div aria-hidden className={cn('pointer-events-none absolute inset-0 z-0 overflow-hidden', className)}>
       <img src={dark ? photo.dark : photo.light} alt="" className="h-full w-full object-cover" />
-      {/* Light scrim so cards can go semi-transparent anywhere on the page
-          and still keep their text readable over busy parts of the photo. */}
-      <div className="absolute inset-0" style={{ background: dark ? 'rgba(11,14,20,0.4)' : 'rgba(255,255,255,0.3)' }} />
+      {/* Scrim so cards can go semi-transparent anywhere on the page and
+          still keep their text readable over busy parts of the photo. */}
+      <div
+        className="absolute inset-0"
+        style={{ background: dark ? `rgba(11,14,20,${scrimOpacity})` : `rgba(255,255,255,${scrimOpacity})` }}
+      />
     </div>
   )
 }
