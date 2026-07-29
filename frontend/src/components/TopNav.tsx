@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { Moon, Sun, LogOut, ChevronDown } from 'lucide-react'
 import { useAuth } from '@/features/auth/AuthContext'
@@ -15,14 +15,36 @@ function GroupNavItem({ item }: { item: PageDef & { children: NonNullable<PageDe
   const { pathname } = useLocation()
   const childActive = item.children.some((c) => pathname === c.path || pathname.startsWith(c.path + '/'))
   const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
   const Icon = item.icon
 
+  // Close on outside click / Escape instead of onBlur — onBlur fired the
+  // instant focus left the button (i.e. right as a child NavLink was
+  // clicked), so the menu unmounted before the click could register as a
+  // navigation. This only closes for interaction truly outside the group.
+  useEffect(() => {
+    if (!open) return
+    function handlePointerDown(e: PointerEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [open])
+
   return (
-    <div className="relative">
+    <div className="relative" ref={containerRef}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
         className={cn(
           'flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
           childActive ? 'bg-brand text-white shadow-sm' : 'text-ink hover:bg-canvas-alt',
@@ -38,6 +60,7 @@ function GroupNavItem({ item }: { item: PageDef & { children: NonNullable<PageDe
             <NavLink
               key={child.path}
               to={child.path}
+              onClick={() => setOpen(false)}
               className={({ isActive }) =>
                 cn(
                   'rounded-lg px-3 py-2 text-sm font-medium transition-colors',

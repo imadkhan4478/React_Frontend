@@ -20,7 +20,10 @@ const REPORTING_PAGES: PageKey[] = ['assistant', 'dashboard', 'reports']
 const PAGE_ACCESS: Record<Role, PageKey[]> = {
   admin: [...REPORTING_PAGES, 'dataEntry', 'userManagement'],
   manager: [...REPORTING_PAGES, 'dataEntry'],
-  entry: ['dataEntry'],
+  // 'assistant' (Bot) added for every role, including entry, so Bot can be
+  // the universal default landing page post-login while we're still on
+  // mock data with no real role enforcement (see README).
+  entry: ['assistant', 'dataEntry'],
   viewer: REPORTING_PAGES,
 }
 

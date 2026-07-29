@@ -39,10 +39,16 @@ export const PAGE_DEFS: PageDef[] = [
 ]
 
 /** Where to land a given role right after login (or when they're bounced
- * off a page they can't access) — the first page in PAGE_DEFS order that
- * their role is allowed to see. */
+ * off a page they can't access). Bot (Assistant) is the intended default
+ * landing page for everyone right now — no real roles yet, just mock data
+ * (see README) — so it wins whenever the role can see it. Otherwise falls
+ * back to the first page in PAGE_DEFS order that the role is allowed to see. */
 export function defaultPathForRole(role: string | undefined): string {
   const allowed = pagesForRole(role)
+  if (allowed.includes('assistant')) {
+    const assistantDef = PAGE_DEFS.find((p) => p.key === 'assistant')
+    if (assistantDef) return assistantDef.path
+  }
   const first = PAGE_DEFS.find((p) => allowed.includes(p.key))
   return first?.path ?? '/login'
 }
