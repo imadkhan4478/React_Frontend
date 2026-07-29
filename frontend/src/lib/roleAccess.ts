@@ -2,13 +2,13 @@ import type { PageKey } from '@/theme/tokens'
 
 export type Role = 'admin' | 'manager' | 'entry' | 'viewer'
 
-export const ALL_PAGES: PageKey[] = [
-  'dashboard', 'purchases', 'inventory', 'imports', 'dataEntry', 'logistics', 'reports', 'assistant', 'userManagement',
-]
+export const ALL_PAGES: PageKey[] = ['assistant', 'dashboard', 'reports', 'dataEntry', 'userManagement']
 
 /** The reporting/BI side of the app — everything except data entry and
- * account administration. */
-const REPORTING_PAGES: PageKey[] = ['dashboard', 'purchases', 'inventory', 'imports', 'logistics', 'reports', 'assistant']
+ * account administration. Purchases/Inventory/Imports/Logistics aren't
+ * listed here: they're no longer routed pages of their own, just tabs
+ * inside Dashboard, so they need no separate role gate. */
+const REPORTING_PAGES: PageKey[] = ['assistant', 'dashboard', 'reports']
 
 /**
  * Role -> allowed page keys. This is a UI-only gate (hide/redirect away from

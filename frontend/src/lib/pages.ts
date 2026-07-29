@@ -1,5 +1,5 @@
 import {
-  Gauge, ShoppingCart, PackageOpen, Plane, ClipboardList, Truck, BarChart3, MessageSquare, Users,
+  Gauge, ClipboardList, BarChart3, MessageSquare, Users,
   type LucideIcon,
 } from 'lucide-react'
 import type { PageKey } from '@/theme/tokens'
@@ -19,14 +19,12 @@ export interface PageDef {
 
 // Single source of truth for the sidebar/routes — mirrors the old
 // Streamlit `PAGES` dict in app.py: to reorder/rename a tab, edit here only.
+// Purchases/Inventory/Imports/Logistics aren't separate entries — they live
+// as tabs inside Dashboard (see Dashboard.tsx's own tab bar).
 export const PAGE_DEFS: PageDef[] = [
-  { key: 'dashboard', label: 'Dashboard', path: '/dashboard', icon: Gauge },
-  { key: 'purchases', label: 'Purchases', path: '/purchases', icon: ShoppingCart },
-  { key: 'inventory', label: 'Inventory', path: '/inventory', icon: PackageOpen },
-  { key: 'imports', label: 'Imports', path: '/imports', icon: Plane },
-  { key: 'logistics', label: 'Logistics', path: '/logistics', icon: Truck },
-  { key: 'reports', label: 'Reports', path: '/reports', icon: BarChart3 },
   { key: 'assistant', label: 'Assistant', path: '/assistant', icon: MessageSquare },
+  { key: 'dashboard', label: 'Dashboards', path: '/dashboard', icon: Gauge },
+  { key: 'reports', label: 'Customize Reports', path: '/reports', icon: BarChart3 },
   // Kept separate from the reporting pages above (its own section in the
   // sidebar, not interleaved between them) — a different kind of work.
   {
