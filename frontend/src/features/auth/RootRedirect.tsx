@@ -1,11 +1,12 @@
 import { Navigate } from 'react-router-dom'
 import { useAuth } from './AuthContext'
-import { defaultPathForRole } from '@/lib/pages'
+import { defaultPathForUser } from '@/lib/pages'
 
 /** Sends "/" and any unknown path to the right place: the login screen if
- * signed out, otherwise the first page this role is allowed to see (e.g.
- * Operations for an entry-role user, not the analytics Dashboard). */
+ * signed out, otherwise the first page this account is allowed to see
+ * (Assistant by default, or Operations if that's all a limited account
+ * can see). */
 export function RootRedirect() {
   const { user } = useAuth()
-  return <Navigate to={user ? defaultPathForRole(user.role) : '/login'} replace />
+  return <Navigate to={user ? defaultPathForUser(user) : '/login'} replace />
 }

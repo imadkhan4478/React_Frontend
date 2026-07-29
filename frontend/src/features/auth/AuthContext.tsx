@@ -1,11 +1,12 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 import { mockLogin } from '@/lib/mockAuth'
-import type { Role } from '@/lib/roleAccess'
+import type { Permission } from '@/lib/roleAccess'
 
 export interface User {
   username: string
   name: string
-  role: Role
+  isAdmin: boolean
+  permissions: Permission[]
 }
 
 interface AuthContextValue {
@@ -17,7 +18,10 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
-const STORAGE_KEY = 'qgirs-user'
+// Versioned: the old role-shaped session (username/name/role) isn't
+// compatible with isAdmin + permissions, so this starts fresh (logged out)
+// instead of crashing on a stale session object.
+const STORAGE_KEY = 'qgirs-user-v2'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   // Frontend-only stub: session lives in localStorage until a real backend

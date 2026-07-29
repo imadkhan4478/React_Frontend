@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { Moon, Sun, LogOut, ChevronDown } from 'lucide-react'
 import { useAuth } from '@/features/auth/AuthContext'
 import { useTheme } from '@/theme/ThemeContext'
-import { pagesForRole } from '@/lib/roleAccess'
+import { pagesForUser } from '@/lib/roleAccess'
 import { PAGE_DEFS, type PageDef } from '@/lib/pages'
 import { cn } from '@/lib/utils'
 import logo from '@/assets/qadri_logo_transparent.png'
@@ -85,7 +85,7 @@ function GroupNavItem({ item }: { item: PageDef & { children: NonNullable<PageDe
 export function TopNav() {
   const { user, logout } = useAuth()
   const { dark, toggle } = useTheme()
-  const allowed = pagesForRole(user?.role)
+  const allowed = pagesForUser(user)
   const visiblePages = PAGE_DEFS.filter((p) => allowed.includes(p.key))
 
   return (
@@ -140,7 +140,7 @@ export function TopNav() {
         <div className="flex shrink-0 items-center gap-2 border-l border-line pl-4">
           <div className="text-right leading-tight">
             <p className="max-w-[10rem] truncate text-sm font-semibold text-ink">{user.name}</p>
-            <p className="truncate text-xs capitalize text-muted">{user.role}</p>
+            <p className="truncate text-xs text-muted">{user.isAdmin ? 'Admin' : 'Member'}</p>
           </div>
           <button
             type="button"
