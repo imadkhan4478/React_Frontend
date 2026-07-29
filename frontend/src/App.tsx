@@ -14,6 +14,9 @@ import { ImportsStatusWizard } from '@/features/importsStatus/wizard/ImportsStat
 import { LogisticsStatusList } from '@/features/logisticsStatus/LogisticsStatusList'
 import { LogisticsStatusDetail } from '@/features/logisticsStatus/LogisticsStatusDetail'
 import { LogisticsStatusWizard } from '@/features/logisticsStatus/wizard/LogisticsStatusWizard'
+import { TruckingStatusList } from '@/features/truckingStatus/TruckingStatusList'
+import { TruckingStatusDetail } from '@/features/truckingStatus/TruckingStatusDetail'
+import { TruckingStatusWizard } from '@/features/truckingStatus/wizard/TruckingStatusWizard'
 
 function App() {
   return (
@@ -27,8 +30,9 @@ function App() {
                 own routes — they're tabs inside Dashboard now. */}
             <Route path="/dashboard" element={<RequirePage pageKey="dashboard"><Dashboard /></RequirePage>} />
 
-            {/* Consignment tracking + Logistics order tracking — grouped in
-                the sidebar as "Operations", gated together the same way. */}
+            {/* Consignment tracking + Logistics order tracking + Trucking
+                Status — grouped in the sidebar as "Operations", gated
+                together the same way. */}
             <Route element={<RequirePage pageKey="dataEntry"><Outlet /></RequirePage>}>
               <Route path="/imports-status">
                 <Route index element={<ImportsStatusList />} />
@@ -42,6 +46,13 @@ function App() {
                 <Route path="new" element={<LogisticsStatusWizard />} />
                 <Route path=":id" element={<LogisticsStatusDetail />} />
                 <Route path=":id/edit/:step" element={<LogisticsStatusWizard />} />
+              </Route>
+
+              <Route path="/trucking-status">
+                <Route index element={<TruckingStatusList />} />
+                <Route path="new" element={<TruckingStatusWizard />} />
+                <Route path=":id" element={<TruckingStatusDetail />} />
+                <Route path=":id/edit/:step" element={<TruckingStatusWizard />} />
               </Route>
             </Route>
 

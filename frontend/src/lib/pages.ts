@@ -11,8 +11,9 @@ export interface PageDef {
   path: string
   icon: LucideIcon
   /** Sub-links rendered under this item instead of it being a direct link
-   * itself — used for Operations, which groups two independent route trees
-   * (Imports Status, Logistics Status) behind one sidebar entry. */
+   * itself — used for Operations, which groups three independent route trees
+   * (Imports Status, Logistics Status, Trucking Status) behind one sidebar
+   * entry. */
   children?: { label: string; path: string }[]
 }
 
@@ -31,6 +32,7 @@ export const PAGE_DEFS: PageDef[] = [
     children: [
       { label: 'Imports Status', path: '/imports-status' },
       { label: 'Logistics Status', path: '/logistics-status' },
+      { label: 'Trucking Status', path: '/trucking-status' },
     ],
   },
   { key: 'userManagement', label: 'User Management', path: '/user-management', icon: Users },
