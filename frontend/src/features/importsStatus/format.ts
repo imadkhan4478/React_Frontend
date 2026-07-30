@@ -12,9 +12,11 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 /** Exact, grouped, no decimals — "PKR 5,191,830". */
 export const pkr = (v: number) => `PKR ${Math.round(v).toLocaleString('en-US')}`
 
-/** Foreign currency with its code — "USD 18,450.00". */
-export const fx = (v: number, code: string) =>
-  `${code} ${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+/** Foreign currency with its code — "USD 18,450.00". Falls back to no code
+ *  if currency hasn't been picked yet, rather than forcing every call site
+ *  to coerce — currency is optional until Step 1 is filled in. */
+export const fx = (v: number, code: string | undefined) =>
+  `${code ?? ''} ${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`.trim()
 
 /** Plain grouped number — quantities, day counts. */
 export const num = (v: number) => v.toLocaleString('en-US')
@@ -39,7 +41,7 @@ export function ordinal(n: number): string {
 }
 
 /** "1st ETA 12 Jul 26 → 2nd ETA 19 Jul 26 → 3rd ETA 24 Jul 26" */
-export function etaChain(history: string[], current: string | null): string {
+export function etaChain(history: string[], current: string | null | undefined): string {
   const all = [...history, ...(current ? [current] : [])]
   return all.map((d, i) => `${ordinal(i + 1)} ETA ${dateShort(d)}`).join(' → ')
 }

@@ -47,6 +47,11 @@ export const REQUISITION_TYPES = ['store', 'engineering', 'others'] as const
 export type RequisitionType = (typeof REQUISITION_TYPES)[number]
 
 export const CONSIGNMENT_TYPES = ['efs', 'regular'] as const
+/** Feeds Trucking Status's Import-FOB request derivation directly —
+ *  see deriveFromImportsFob() in lib/truckingStatusData.ts, which checks
+ *  incoterm === 'FOB'. Kept short: only the terms that actually change who
+ *  arranges freight, not the full ICC list. */
+export const INCOTERMS = ['FOB', 'CIF', 'CFR', 'EXW', 'DAP'] as const
 export const PAYMENT_INSTRUMENTS = ['LC', 'Adv', 'DP', 'CAD'] as const
 export type PaymentInstrument = (typeof PAYMENT_INSTRUMENTS)[number]
 
@@ -134,7 +139,18 @@ export const consignmentStepSchema = z.object({
   origin: optionalText,
   currency: optionalText,
   consignmentType: z.enum(CONSIGNMENT_TYPES).optional().or(z.literal('')),
+  /** FOB feeds Trucking Status's cross-module request derivation — see
+   *  deriveFromImportsFob() in lib/truckingStatusData.ts. */
+  incoterm: z.enum(INCOTERMS).optional().or(z.literal('')),
   poDate: optionalDate,
+  /** Date the requisition/indent was raised — the moment the need was first
+   *  recorded, before a supplier or PO exists. Distinct from poDate: the gap
+   *  between the two is procurement lead time, not shipping time. */
+  requisitionDate: optionalDate,
+  /** Date the business actually needs the goods on the floor. This is the
+   *  figure delay is measured against — not a target the system enforces,
+   *  just the number that makes "how late is this really" answerable. */
+  requiredDate: optionalDate,
   items: z.array(consignmentItemSchema).default([]),
 })
 
@@ -399,7 +415,7 @@ export const emptyPayment = (id: string): Payment => ({
 export const DRAFT_DEFAULT_VALUES: ConsignmentDraft = {
   systemId: '',
   branch: '', supplier: '', origin: '', currency: '',
-  consignmentType: '', poDate: '',
+  consignmentType: '', incoterm: '', poDate: '', requisitionDate: '', requiredDate: '',
   items: [emptyItem('item-1')],
 
   paymentInstrument: '', instrumentNo: '', instrumentDate: '', works: '',
@@ -438,7 +454,7 @@ export interface WizardStepDef {
 
 export const WIZARD_STEPS: WizardStepDef[] = [
   { step: 1, key: 'consignment', label: 'Consignment',
-    fields: ['branch', 'supplier', 'origin', 'currency', 'consignmentType', 'poDate', 'items'] },
+    fields: ['branch', 'supplier', 'origin', 'currency', 'consignmentType', 'incoterm', 'poDate', 'requisitionDate', 'requiredDate', 'items'] },
   { step: 2, key: 'finance', label: 'Finance',
     fields: ['paymentInstrument', 'instrumentNo', 'instrumentDate', 'works', 'exchangeRate', 'rateDate', 'rateSource', 'items'] },
   { step: 3, key: 'shipping', label: 'Shipping',
@@ -475,6 +491,20 @@ export const localTotal = (d: Pick<ConsignmentDraft, 'items' | 'exchangeRate'>) 
   d.exchangeRate !== undefined ? foreignTotal(d) * d.exchangeRate : undefined
 
 export const transitDays = (d: Pick<ConsignmentDraft, 'etd' | 'eta'>) => days(d.etd, d.eta)
+
+/** Days between when the requisition was raised and the PO was actually
+ *  placed — procurement lead time, separate from anything shipping-related. */
+export const procurementLeadDays = (d: Pick<ConsignmentDraft, 'requisitionDate' | 'poDate'>) =>
+  days(d.requisitionDate, d.poDate)
+
+/**
+ * How late (or early) the goods will actually land versus when they were
+ * required. Positive = late, zero or negative = on time or ahead. Undefined
+ * only when one of the two dates is missing — never coerced to 0, since "no
+ * data" and "no delay" must stay visibly different everywhere this is shown.
+ */
+export const requiredVsEtaDelay = (d: Pick<ConsignmentDraft, 'requiredDate' | 'eta'>) =>
+  days(d.requiredDate, d.eta)
 
 /** Current ETA against the FIRST one ever promised — not the previous one. */
 export const etaSlippage = (d: Pick<ConsignmentDraft, 'eta' | 'etaRevisions'>) =>

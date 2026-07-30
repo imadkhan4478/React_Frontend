@@ -92,6 +92,10 @@ const STATUS_ROLES: Record<string, StatusRole> = {
   'lc in process': 'watch', 't/t in process': 'watch', 'under de-stuffing': 'watch',
   sailing: 'watch', 'at qfl': 'watch', 'at port': 'watch',
   'pending packing': 'watch', 'in progress': 'watch', 'near complete': 'watch',
+  // Logistics Status labels (EXPORT_STATUSES / LOCAL_STATUSES in
+  // features/logisticsStatus/schema.ts) — additive only, nothing above changed.
+  'under packing': 'watch', transportation: 'watch', 'under shipping arrangement': 'watch',
+  'on water': 'watch',
   completed: 'healthy', cleared: 'healthy', ok: 'healthy', delivered: 'healthy',
   healthy: 'healthy', 'arrived at works': 'healthy', 'arrived at qfl': 'healthy', complete: 'healthy',
 }

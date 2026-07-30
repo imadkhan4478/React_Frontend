@@ -1,7 +1,7 @@
 import { useFormContext, useWatch } from 'react-hook-form'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { daysBetween, ratePerWeight, type LogisticsDraft } from '../../schema'
+import { daysBetween, ratePerWeight, totalGrossWeight, type LogisticsDraft } from '../../schema'
 
 /** Read-only derived output: greyed, with the derivation stated. Mirrors the
  * imports module's "calculated values are computed, never keyed in" rule. */
@@ -19,13 +19,14 @@ function DerivedField({ label, value, derivation }: { label: string; value: stri
 
 export function Step2Transportation() {
   const { register, control, formState: { errors } } = useFormContext<LogisticsDraft>()
-  const [gateOut, dispatch, actualFreight, grossWeight, orderType] = useWatch({
+  const [gateOut, dispatch, actualFreight, items, orderType] = useWatch({
     control,
-    name: ['gateOutDate', 'dispatchNoteDate', 'actualFreight', 'grossWeight', 'orderType'],
+    name: ['gateOutDate', 'dispatchNoteDate', 'actualFreight', 'items', 'orderType'],
   })
 
   const delay = daysBetween(dispatch, gateOut)
-  const rate = ratePerWeight(actualFreight, grossWeight)
+  const rate = ratePerWeight(actualFreight, items ?? [])
+  const grossTotal = totalGrossWeight(items ?? [])
 
   // Copy hint changes by order type: for exports the delivery date is when the
   // goods reach QFL; for local it is when they reach the customer (which also
@@ -82,7 +83,7 @@ export function Step2Transportation() {
       <DerivedField
         label="Rate per Weight"
         value={rate === null ? '—' : rate.toFixed(2)}
-        derivation="Actual freight ÷ gross weight (kg)"
+        derivation={`Actual freight ÷ total gross weight across all items (${grossTotal.toLocaleString()} kg)`}
       />
 
       <div className="flex flex-col gap-1.5">

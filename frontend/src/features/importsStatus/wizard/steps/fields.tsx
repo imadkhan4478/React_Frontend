@@ -73,7 +73,11 @@ export function Callout({ children }: { children: ReactNode }) {
 
 /** A read-only strip of key header fields, so later steps show which
  *  consignment is being edited. */
-export function CarriedContext({ items }: { items: { label: string; value: string }[] }) {
+/** A read-only strip of key header fields, so later steps show which
+ *  consignment is being edited. Accepts undefined values (an optional field
+ *  that hasn't been filled yet) and shows a dash rather than forcing every
+ *  call site to coerce with `?? ''` first. */
+export function CarriedContext({ items }: { items: { label: string; value: string | undefined }[] }) {
   return (
     <div className="flex flex-wrap gap-x-6 gap-y-2 rounded-lg border border-line bg-canvas-alt px-3.5 py-2.5">
       {items.map((it) => (

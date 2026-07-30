@@ -75,9 +75,14 @@ export interface ConsignmentRow {
   supplier: string
   origin: string
   currency: string
+  /** FOB rows here are picked up by Trucking Status's cross-module request
+   *  derivation once past Under Production — see truckingStatusData.ts. */
+  incoterm: string | null
   items: ConsignmentItemRow[]
   requisitionSummary: string // "Store", or "Store + Engineering" for a mixed consignment
   status: ConsignmentStatus
+  requisitionDate: string | null
+  requiredDate: string | null
   etd: string | null
   eta: string | null
   etaHistory: string[] // oldest first; slippage is current minus the first
@@ -85,6 +90,10 @@ export interface ConsignmentRow {
   exchangeRate: number
   rateDate: string
   paymentInstrument: string
+  /** The actual number on the instrument — the LC number, the advance
+   *  payment reference, etc. Distinct from paymentInstrument, which is only
+   *  the type (LC / Adv / DP / CAD). */
+  instrumentNo: string | null
   paymentLabel: string
   paymentState: 'paid' | 'partial' | 'unpaid'
   outstanding: number
@@ -100,6 +109,11 @@ function makeRow(i: number): ConsignmentRow {
   const stageIndex = CONSIGNMENT_STATUSES.indexOf(status)
   const currency = pick(CURRENCIES)
   const instrument = pick(PAYMENT_INSTRUMENTS)
+  // ~10% left blank — the instrument type can be chosen before its number is
+  // actually issued by the bank.
+  const instrumentNo = rng() > 0.1
+    ? `${instrument}-2026-${randInt(1000, 9999)}`
+    : null
 
   const lineCount = randInt(1, 3)
   const items: ConsignmentItemRow[] = Array.from({ length: lineCount }, () => {
@@ -115,6 +129,12 @@ function makeRow(i: number): ConsignmentRow {
     }
   })
   const requisitionSummary = [...new Set(items.map((it) => it.requisitionType))].join(' + ')
+
+  // Requisition happens well before shipping — sits upstream of ETD, not
+  // derived from it. ~15% of rows leave it blank, same as any other
+  // fill-later header field.
+  const requisitionDate = rng() > 0.15 ? addDays('2026-02-15', randInt(0, 45)) : null
+  const requiredDate = requisitionDate ? addDays(requisitionDate, randInt(60, 150)) : null
 
   const hasSchedule = stageIndex >= 2
   const etd = hasSchedule ? addDays('2026-04-01', randInt(30, 110)) : null
@@ -154,14 +174,20 @@ function makeRow(i: number): ConsignmentRow {
   })
   if (!etd) missing.push('ETD')
   if (!eta) missing.push('ETA')
+  if (!requiredDate) missing.push('Required date')
   if (stageIndex >= 4 && !cleared) missing.push('Gate out date')
+
+  // ~35% FOB so Trucking Status's derived-request list has real rows to show,
+  // not just an empty "Import FOB" source with nothing behind it.
+  const incoterm = rng() > 0.35 ? pick(['FOB', 'CIF', 'CFR', 'EXW', 'DAP']) : null
 
   return {
     systemId: `QC-2026-${String(160 - i).padStart(4, '0')}`,
     branch: pick(BRANCHES), supplier: pick(SUPPLIERS), origin: pick(ORIGINS), currency,
-    items, requisitionSummary, status, etd, eta, etaHistory,
+    incoterm,
+    items, requisitionSummary, status, requisitionDate, requiredDate, etd, eta, etaHistory,
     foreignValue, exchangeRate: Number(exchangeRate.toFixed(2)), rateDate: etd ?? '2026-05-01',
-    paymentInstrument: instrument, paymentLabel, paymentState, outstanding,
+    paymentInstrument: instrument, instrumentNo, paymentLabel, paymentState, outstanding,
     clearingAgent: stageIndex >= 4 ? pick(['Prime Cargo Services', 'Indus Clearing Co.', 'Sea Link Logistics']) : null,
     arrivedAtPort: arrived, gateOut: cleared,
     freeDays: stageIndex >= 4 ? randInt(0, 9) : null,
@@ -177,6 +203,14 @@ export const pkrValue = (r: ConsignmentRow) => r.foreignValue * r.exchangeRate
 export const slippageDays = (r: ConsignmentRow) =>
   r.etaHistory.length && r.eta
     ? Math.round((+new Date(r.eta) - +new Date(r.etaHistory[0])) / 86_400_000)
+    : null
+
+/** How late the goods will land against when they were actually required.
+ *  Positive = late, zero/negative = on time or ahead. Null (not 0) when either
+ *  date is missing — a missing date is never treated as "no delay". */
+export const requiredDelayDays = (r: ConsignmentRow) =>
+  r.requiredDate && r.eta
+    ? Math.round((+new Date(r.eta) - +new Date(r.requiredDate)) / 86_400_000)
     : null
 
 export const daysAtPort = (r: ConsignmentRow, today = '2026-07-24') =>
@@ -219,6 +253,7 @@ export interface ConsignmentFilters {
   status?: string[]
   requisition?: string[]
   supplier?: string[]
+  paymentInstrument?: string[]
   stage?: StageKey
   includeClosed?: boolean
   missingOnly?: boolean
@@ -239,6 +274,7 @@ export function getConsignments(f: ConsignmentFilters = {}): ConsignmentRow[] {
     if (!inSet(r.branch, f.branch)) return false
     if (!inSet(r.status, f.status)) return false
     if (!inSet(r.supplier, f.supplier)) return false
+    if (!inSet(r.paymentInstrument, f.paymentInstrument)) return false
     if (f.requisition?.length && !f.requisition.some((x) => r.requisitionSummary.includes(x))) return false
     if (f.missingOnly && r.missing.length === 0) return false
     if (q) {
@@ -256,6 +292,7 @@ export const branchList = [...BRANCHES]
 export const statusList = [...CONSIGNMENT_STATUSES]
 export const supplierList = [...SUPPLIERS]
 export const requisitionList = [...REQUISITION_LABELS]
+export const paymentInstrumentList = [...PAYMENT_INSTRUMENTS]
 
 /* ------------------------------------------------------------------ */
 /* Wizard draft bridge                                                 */
@@ -288,6 +325,9 @@ function rowToDraft(row: ConsignmentRow): ConsignmentDraft {
     supplier: row.supplier,
     origin: row.origin,
     currency: row.currency,
+    incoterm: (row.incoterm ?? '') as ConsignmentDraft['incoterm'],
+    requisitionDate: row.requisitionDate ?? '',
+    requiredDate: row.requiredDate ?? '',
     items: row.items.map((it, i) => ({
       ...emptyItem(`item-${row.systemId}-${i}`),
       itemName: it.itemName,
@@ -299,6 +339,7 @@ function rowToDraft(row: ConsignmentRow): ConsignmentDraft {
       hsCode: it.hsCode ?? '',
     })),
     paymentInstrument: row.paymentInstrument as ConsignmentDraft['paymentInstrument'],
+    instrumentNo: row.instrumentNo ?? '',
     exchangeRate: row.exchangeRate,
     rateDate: row.rateDate,
     etd: row.etd ?? '',
@@ -345,12 +386,16 @@ export function updateConsignment(systemId: string, data: ConsignmentDraft): voi
   row.supplier = data.supplier || row.supplier
   row.origin = data.origin || row.origin
   row.currency = data.currency || row.currency
+  row.incoterm = data.incoterm || row.incoterm
+  row.requisitionDate = data.requisitionDate || row.requisitionDate
+  row.requiredDate = data.requiredDate || row.requiredDate
   row.status = (data.status || row.status) as ConsignmentStatus
   row.etd = data.etd || row.etd
   row.eta = data.eta || row.eta
   row.exchangeRate = data.exchangeRate ?? row.exchangeRate
   row.rateDate = data.rateDate || row.rateDate
   row.clearingAgent = data.clearingAgent || row.clearingAgent
+  row.instrumentNo = data.instrumentNo || row.instrumentNo
   row.freeDays = data.freeDays ?? row.freeDays
   row.gateOut = data.gateOutDate || row.gateOut
 }

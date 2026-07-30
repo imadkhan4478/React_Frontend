@@ -152,8 +152,8 @@ const EDITS = new Map<string, TruckingRow>()
 // harmless once the exports are confirmed correct, and cheap insurance if a
 // future refactor of either store renames something out from under this file.
 //
-// Remaining known gap: Imports has no FOB/incoterm flag yet (see isFob()
-// below) — the user will add one when Imports is next edited.
+// Imports now carries a real `incoterm` field (importsStatus/schema.ts) —
+// deriveFromImportsFob() below checks it directly, no placeholder heuristic.
 // ---------------------------------------------------------------------------
 
 /**
@@ -168,6 +168,11 @@ const EDITS = new Map<string, TruckingRow>()
  * as their production leg, and 'Transportation' is the first stage that's
  * actually trucking's to move; Local's pipeline ends there before 'Delivered',
  * Export's continues through the sea leg.
+ *
+ * UPDATE: Logistics orders are now multi-item (see
+ * features/logisticsStatus/schema.ts) — itemDetail/idm/exportNo no longer
+ * live on the order header. Summarize across the first item plus a count,
+ * same convention LogisticsStatusList.tsx uses.
  */
 function deriveFromLogistics(): TruckingRow[] {
   try {
@@ -175,20 +180,26 @@ function deriveFromLogistics(): TruckingRow[] {
     const OPEN_TO_MOVE = new Set(['Transportation', 'Under Shipping Arrangement', 'At QFL', 'At Port', 'On Water'])
     return rows
       .filter((r) => OPEN_TO_MOVE.has(r.status))
-      .map((r): TruckingRow => ({
-        systemId: `TR-LOG-${r.systemId}`,
-        source: 'from-logistics',
-        sourceRef: r.systemId,
-        movementType: 'Outbound',
-        executionDate: r.gateOutDate || r.dispatchNoteDate,
-        transporterName: r.transporterName,
-        itemDetails: r.itemDetail,
-        pickup: r.originFactory || r.originCity,
-        destination: r.destination || r.originCountry,
-        referenceNo: r.idm || r.exportNo,
-        vehicles: [],
-        open: true,
-      }))
+      .map((r): TruckingRow => {
+        const first = r.items[0]
+        const more = r.items.length - 1
+        const itemSummary = first ? `${first.itemDetail}${more > 0 ? ` +${more} more` : ''}` : 'No items'
+        const ref = first?.idm || first?.exportNo || r.systemId
+        return {
+          systemId: `TR-LOG-${r.systemId}`,
+          source: 'from-logistics',
+          sourceRef: r.systemId,
+          movementType: 'Outbound',
+          executionDate: r.gateOutDate || r.dispatchNoteDate,
+          transporterName: r.transporterName,
+          itemDetails: itemSummary,
+          pickup: r.originFactory || r.originCity,
+          destination: r.destination || r.originCountry,
+          referenceNo: ref,
+          vehicles: [],
+          open: true,
+        }
+      })
   } catch {
     return []
   }
@@ -203,21 +214,18 @@ function deriveFromLogistics(): TruckingRow[] {
  * `systemId`). "Past Under Production" is now an index comparison against the
  * real ordered CONSIGNMENT_STATUSES (importsStatus/schema.ts) rather than a
  * hardcoded name set, per the instruction.
+ *
+ * UPDATE: ConsignmentRow now has a real `incoterm` field (see
+ * importsStatus/schema.ts's INCOTERMS + Step1Consignment.tsx). The former
+ * placeholder heuristic — which always evaluated false, since no such field
+ * existed yet — is replaced with a direct check.
  */
 function deriveFromImportsFob(): TruckingRow[] {
   try {
     const rows = importsData.getConsignments() ?? []
     const productionIdx = CONSIGNMENT_STATUSES.indexOf('Under Production')
-    // TODO(claude-code / user): real FOB flag. ConsignmentRow has no incoterm
-    // field yet — this heuristic is a deliberate placeholder that always
-    // evaluates false against the real data until Imports gets one, per the
-    // task's note that the user will add it later.
-    const isFob = (r: unknown) => {
-      const rec = r as Record<string, unknown>
-      return rec.incoterm === 'FOB' || rec.isFob === true
-    }
     return rows
-      .filter((r) => CONSIGNMENT_STATUSES.indexOf(r.status) > productionIdx && isFob(r))
+      .filter((r) => CONSIGNMENT_STATUSES.indexOf(r.status) > productionIdx && r.incoterm === 'FOB')
       .map((r): TruckingRow => ({
         systemId: `TR-IMP-${r.systemId}`,
         source: 'from-import-fob',

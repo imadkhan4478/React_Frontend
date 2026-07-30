@@ -5,7 +5,7 @@ import {
 } from '../../schema'
 import { Field, Input, Select, Callout, CarriedContext } from './fields'
 
-const fx = (v: number, code: string) =>
+const fx = (v: number, code: string | undefined) =>
   `${code || ''} ${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`.trim()
 
 /**

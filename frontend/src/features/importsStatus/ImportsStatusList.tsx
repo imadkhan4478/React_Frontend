@@ -11,8 +11,8 @@ import { SortableTable, type SortableColumn } from './components/SortableTable'
 import { StatusPill, Tag, PaymentDot } from './components/atoms'
 import { pkr, fx, dateShort, days as daysFmt, num } from './format'
 import {
-  getConsignments, stageCounts, pkrValue, slippageDays, freeDaysLeft,
-  branchList, statusList, supplierList, requisitionList,
+  getConsignments, stageCounts, pkrValue, slippageDays, freeDaysLeft, requiredDelayDays,
+  branchList, statusList, supplierList, requisitionList, paymentInstrumentList,
   type ConsignmentRow, type ConsignmentFilters, type StageKey,
 } from '@/lib/importsStatusData'
 
@@ -114,6 +114,27 @@ export function ImportsStatusList() {
       ),
     },
     {
+      key: 'requisition', label: 'Requisition / Required', width: 150,
+      sortValue: (r) => r.requiredDate ?? '9999',
+      render: (r) => (
+        <div className="tabular-nums text-[13px]">
+          <div>{dateShort(r.requisitionDate)} <span className="text-muted">req'd</span></div>
+          <div>{dateShort(r.requiredDate)} <span className="text-muted">needed</span></div>
+        </div>
+      ),
+    },
+    {
+      key: 'requiredDelay', label: 'Delay (needed vs. ETA)', width: 130, align: 'right',
+      sortValue: (r) => requiredDelayDays(r) ?? -9999,
+      render: (r) => {
+        const d = requiredDelayDays(r)
+        if (d === null) return <span className="text-muted" title="Needs both a required date and an ETA">—</span>
+        return d <= 0
+          ? <span className="tabular-nums text-[var(--color-healthy)]">{d === 0 ? 'on time' : `${-d}d ahead`}</span>
+          : <Tag tone="danger" title="ETA is later than the date this was required by">{d}d late</Tag>
+      },
+    },
+    {
       key: 'etd', label: 'ETD', width: 90, align: 'right',
       sortValue: (r) => r.etd ?? '9999',
       render: (r) => <span className="tabular-nums">{dateShort(r.etd)}</span>,
@@ -141,7 +162,7 @@ export function ImportsStatusList() {
         const s = slippageDays(r)
         if (s === null) return <span className="text-muted">—</span>
         return s <= 0
-          ? <span className="tabular-nums text-[var(--color-success)]">on time</span>
+          ? <span className="tabular-nums text-[var(--color-healthy)]">on time</span>
           : <Tag tone="danger">{daysFmt(s)}</Tag>
       },
     },
@@ -163,13 +184,16 @@ export function ImportsStatusList() {
       ),
     },
     {
-      key: 'payment', label: 'Payment', width: 120,
+      key: 'payment', label: 'Payment', width: 140,
       sortValue: (r) => r.paymentState,
       render: (r) => (
-        <span className="whitespace-nowrap text-[13px]">
-          <PaymentDot state={r.paymentState} />
-          {r.paymentLabel}
-        </span>
+        <div className="text-[13px]">
+          <span className="whitespace-nowrap">
+            <PaymentDot state={r.paymentState} />
+            {r.paymentLabel}
+          </span>
+          {r.instrumentNo && <div className="mt-0.5 pl-[13px] text-[11px] tabular-nums text-muted">{r.instrumentNo}</div>}
+        </div>
       ),
     },
     {
@@ -264,6 +288,7 @@ export function ImportsStatusList() {
         <MultiSelectFilter label="Status" options={statusList} value={filters.status ?? []} onChange={(status) => setFilters((f) => ({ ...f, status }))} />
         <MultiSelectFilter label="Requisition" options={requisitionList} value={filters.requisition ?? []} onChange={(requisition) => setFilters((f) => ({ ...f, requisition }))} />
         <MultiSelectFilter label="Supplier" options={supplierList} value={filters.supplier ?? []} onChange={(supplier) => setFilters((f) => ({ ...f, supplier }))} />
+        <MultiSelectFilter label="Payment instrument" options={paymentInstrumentList} value={filters.paymentInstrument ?? []} onChange={(paymentInstrument) => setFilters((f) => ({ ...f, paymentInstrument }))} />
         <label className="flex items-center gap-2 text-sm text-ink">
           <input type="checkbox" checked={missingOnly} onChange={(e) => setMissingOnly(e.target.checked)} />
           Missing information only

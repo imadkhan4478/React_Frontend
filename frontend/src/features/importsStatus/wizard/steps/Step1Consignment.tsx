@@ -1,8 +1,8 @@
-import { useFormContext, useFieldArray, Controller } from 'react-hook-form'
+import { useFormContext, useFieldArray } from 'react-hook-form'
 import {
   type ConsignmentDraft, type ConsignmentItem,
-  REQUISITION_TYPES, REQUISITION_FIELDS, CONSIGNMENT_TYPES, UNITS_OF_MEASURE,
-  emptyItem, itemPendingFields,
+  REQUISITION_TYPES, REQUISITION_FIELDS, CONSIGNMENT_TYPES, UNITS_OF_MEASURE, INCOTERMS,
+  emptyItem, itemPendingFields, requiredVsEtaDelay,
 } from '../../schema'
 import { Field, Input, Select } from './fields'
 
@@ -31,6 +31,7 @@ export function Step1Consignment() {
   const { register, control, watch, formState: { errors } } = useFormContext<ConsignmentDraft>()
   const { fields, append, remove } = useFieldArray({ control, name: 'items' })
   const items = watch('items')
+  const requiredDelay = requiredVsEtaDelay({ requiredDate: watch('requiredDate'), eta: watch('eta') })
 
   return (
     <div className="space-y-5">
@@ -77,8 +78,33 @@ export function Step1Consignment() {
             </Select>
           </Field>
 
+          <Field label="Incoterm" htmlFor="incoterm" hint="FOB shipments can be routed through Trucking Status">
+            <Select id="incoterm" {...register('incoterm')}>
+              <option value="">Add later</option>
+              {INCOTERMS.map((t) => <option key={t} value={t}>{t}</option>)}
+            </Select>
+          </Field>
+
           <Field label="PO date" htmlFor="poDate">
             <Input id="poDate" type="date" {...register('poDate')} />
+          </Field>
+
+          <Field label="Requisition date" htmlFor="requisitionDate" hint="When the need was first raised">
+            <Input id="requisitionDate" type="date" {...register('requisitionDate')} />
+          </Field>
+
+          <Field label="Required date" htmlFor="requiredDate" hint="When the business actually needs it">
+            <Input id="requiredDate" type="date" {...register('requiredDate')} />
+          </Field>
+
+          <Field label="Required vs. ETA">
+            <div className="flex h-10 items-center px-1 text-sm tabular-nums">
+              {requiredDelay === undefined
+                ? <span className="text-muted">Add both dates to see this</span>
+                : requiredDelay <= 0
+                  ? <span className="text-[var(--color-healthy)]">On time{requiredDelay < 0 ? ` · ${-requiredDelay}d ahead` : ''}</span>
+                  : <span className="font-medium text-[var(--color-risk)]">{requiredDelay}d late</span>}
+            </div>
           </Field>
         </div>
       </section>
