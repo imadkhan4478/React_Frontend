@@ -11,7 +11,7 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { CategoryBar } from '@/components/charts/CategoryBar'
 import { Donut } from '@/components/charts/Donut'
 import { RankedBar } from '@/components/charts/RankedBar'
-import { monthInRange } from '@/lib/format'
+import { dateInRange } from '@/lib/format'
 import { getDocumentation, getDocumentTypes, documentationStatusList } from '@/lib/mockData/logistics'
 
 const TABS = [
@@ -29,7 +29,7 @@ export function DocumentationView() {
 
   const filtered = useMemo(() => getDocumentation({ status }), [status])
   const data = useMemo(
-    () => filtered.filter((r) => monthInRange(r.submitted_date, dateFrom, dateTo)),
+    () => filtered.filter((r) => dateInRange(r.submitted_date, dateFrom, dateTo)),
     [filtered, dateFrom, dateTo],
   )
   const tableRows = useMemo(() => {

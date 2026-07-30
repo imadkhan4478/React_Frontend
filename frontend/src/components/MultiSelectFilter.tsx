@@ -108,7 +108,12 @@ export function MultiSelectFilter({ label, options, value, onChange }: Props) {
         type="button"
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          'flex h-10 w-full items-center justify-between gap-2 rounded-lg border bg-surface px-3 text-left text-sm text-ink',
+          // min-h (not a fixed h-10) so a selection with several/long
+          // labels can wrap to a second line without overflowing the
+          // button and colliding with whatever sits below it in the
+          // filter bar — most callers only ever select 1-2 short values
+          // and stay at the same 40px they always were.
+          'flex min-h-10 w-full flex-wrap items-center justify-between gap-2 rounded-lg border bg-surface px-3 py-2 text-left text-sm text-ink',
           'transition-colors duration-150',
           open ? 'border-brand ring-2 ring-brand/20' : 'border-line hover:border-brand-light',
         )}

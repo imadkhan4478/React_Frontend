@@ -13,7 +13,7 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { CategoryBar } from '@/components/charts/CategoryBar'
 import { Donut } from '@/components/charts/Donut'
 import { RankedBar } from '@/components/charts/RankedBar'
-import { money, shortDate, monthInRange } from '@/lib/format'
+import { money, shortDate, dateInRange } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import {
   getShifting, shiftingStatusList, shiftingMovementTypeList, shiftingPaymentStatusList,
@@ -149,7 +149,7 @@ export function TransportView() {
     [status, movementType, paymentStatus, customer, province, transporter],
   )
   const data = useMemo(
-    () => filtered.filter((r) => monthInRange(r.execution_date, dateFrom, dateTo)),
+    () => filtered.filter((r) => dateInRange(r.execution_date, dateFrom, dateTo)),
     [filtered, dateFrom, dateTo],
   )
   const tableRows = useMemo(() => {

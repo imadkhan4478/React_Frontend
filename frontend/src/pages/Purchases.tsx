@@ -14,7 +14,7 @@ import { CategoryBar } from '@/components/charts/CategoryBar'
 import { Donut } from '@/components/charts/Donut'
 import { RankedBar } from '@/components/charts/RankedBar'
 import { AgingBuckets } from '@/components/charts/AgingBuckets'
-import { money, shortDate, weeklyTrendPoints, agingBuckets, monthInRange } from '@/lib/format'
+import { money, shortDate, weeklyTrendPoints, agingBuckets, dateInRange } from '@/lib/format'
 import {
   getPurchases, type PurchaseRow,
   purchaseStatusList, purchaseSupplierList, purchaseBranchList, purchaseCategoryList,
@@ -53,7 +53,7 @@ export function Purchases() {
     [status, supplier, branch, category, material, ppcStore, mop, sourcingOfficer],
   )
   const data = useMemo(
-    () => filtered.filter((r) => monthInRange(r.purchase_date, dateFrom, dateTo)),
+    () => filtered.filter((r) => dateInRange(r.purchase_date, dateFrom, dateTo)),
     [filtered, dateFrom, dateTo],
   )
 

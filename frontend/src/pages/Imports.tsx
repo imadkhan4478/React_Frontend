@@ -13,7 +13,7 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { CategoryBar } from '@/components/charts/CategoryBar'
 import { Donut } from '@/components/charts/Donut'
 import { RankedBar } from '@/components/charts/RankedBar'
-import { money, shortDate, weeklyTrendPoints, monthInRange } from '@/lib/format'
+import { money, shortDate, weeklyTrendPoints, dateInRange } from '@/lib/format'
 import {
   getImports, type ImportRow,
   importStatusList, importDocumentationStatusList, importBranchList, importCategoryList, importSupplierList,
@@ -56,7 +56,7 @@ export function Imports() {
     [status, documentationStatus, branch, category, supplier, customer, country, shippingLine, modeOfShipment, bank],
   )
   const data = useMemo(
-    () => filtered.filter((r) => monthInRange(r.demand_date, dateFrom, dateTo)),
+    () => filtered.filter((r) => dateInRange(r.demand_date, dateFrom, dateTo)),
     [filtered, dateFrom, dateTo],
   )
 

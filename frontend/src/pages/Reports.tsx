@@ -1,216 +1,173 @@
-import { useMemo, useState } from 'react'
-import { Download } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { FileSpreadsheet, FileText } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
-import { SegmentedControl } from '@/components/SegmentedControl'
 import { FilterBar } from '@/components/FilterBar'
 import { MultiSelectFilter } from '@/components/MultiSelectFilter'
 import { DateRangeFilter } from '@/components/DateRangeFilter'
-import { Disclosure } from '@/components/Disclosure'
-import { KpiCard } from '@/components/KpiCard'
-import { HeroStat } from '@/components/HeroStat'
+import { ColumnPicker } from '@/components/ColumnPicker'
+import { Card, CardContent } from '@/components/ui/card'
 import { DataTable, type Column } from '@/components/DataTable'
-import { StatusBadge } from '@/components/StatusBadge'
-import { money, shortDate, weeklyTrendPoints, monthInRange } from '@/lib/format'
+import { dateInRange } from '@/lib/format'
 import {
-  getPurchases,
-  purchaseBranchList, purchaseCategoryList,
-} from '@/lib/mockData/purchases'
-import { getStock } from '@/lib/mockData/inventory'
-import { getImports } from '@/lib/mockData/imports'
+  REPORT_TYPES, type ReportType, type ReportRow,
+  getReportRows, unionColumns, optionsFor,
+  ITEMS, SUPPLIERS, BRANCHES, ITEM_CATEGORIES,
+} from '@/lib/reportBuilder'
+import { exportExcel, exportPdf } from '@/lib/reportExport'
 
-// The Reports tab is a consolidated, read-only executive view. Unlike the
-// per-module dashboards it doesn't own its own data — it pulls the same mock
-// sources (later: same API endpoints) into one comparable summary. A single
-// module switch drives the whole page so the layout stays identical across
-// modules and only the numbers change.
-const MODULES = [
-  { value: 'purchases', label: 'Purchases' },
-  { value: 'inventory', label: 'Inventory' },
-  { value: 'imports', label: 'Imports' },
-] as const
-
-type ModuleKey = (typeof MODULES)[number]['value']
-
-interface Normalized {
-  ref: string
-  name: string
-  branch: string
-  category: string
-  status: string
-  value: number
-  date: Date
+// A filter only applies to rows whose data type actually has that field —
+// e.g. picking a Supplier still shows Logistics rows (no supplier concept)
+// rather than wiping them out for a field they were never going to have.
+function passesMulti(row: ReportRow, key: string, selected: string[]): boolean {
+  if (selected.length === 0) return true
+  const v = row[key]
+  if (v === undefined) return true
+  return selected.includes(v as string)
 }
 
-// Collapse each module's row shape into one comparable record so the summary
-// KPIs, charts and table are written once rather than three times.
-function normalize(module: ModuleKey, branch: string[], category: string[]): Normalized[] {
-  if (module === 'purchases') {
-    return getPurchases({ branch, category }).map((r) => ({
-      ref: r.po_number, name: r.item, branch: r.branch, category: r.category,
-      status: r.status, value: r.amount, date: r.purchase_date,
-    }))
-  }
-  if (module === 'imports') {
-    return getImports({ branch, category }).map((r) => ({
-      ref: r.import_ref, name: r.customer, branch: r.branch, category: r.category,
-      status: r.current_status, value: r.total_value_pkr, date: r.demand_date,
-    }))
-  }
-  // inventory — value here is available quantity, not PKR. Stock is a
-  // point-in-time snapshot with no real date, so spread rows across recent
-  // weeks purely to give the hero trend a meaningful shape (never presented
-  // as a real time series).
-  const now = Date.now()
-  return getStock({ branch, category }).map((r, i) => ({
-    ref: r.item_code, name: r.item, branch: r.branch, category: r.item_category,
-    status: r.stock_status, value: r.available_qty,
-    date: new Date(now - (i % 12) * 7 * 24 * 60 * 60 * 1000),
-  }))
-}
-
-function sumBy(rows: Normalized[], key: 'branch' | 'category') {
-  const map = new Map<string, number>()
-  for (const r of rows) map.set(r[key], (map.get(r[key]) ?? 0) + r.value)
-  return [...map.entries()]
-    .map(([label, value]) => ({ [key]: label, value }) as Record<string, number | string>)
-    .sort((a, b) => (b.value as number) - (a.value as number))
-}
-
-function toCsv(rows: Normalized[], isInventory: boolean): string {
-  const header = ['Ref', 'Name', 'Branch', 'Category', 'Status', isInventory ? 'Available Qty' : 'Value (PKR)']
-  const lines = rows.map((r) =>
-    [r.ref, r.name, r.branch, r.category, r.status, r.value]
-      .map((c) => {
-        const s = String(c)
-        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-      })
-      .join(','),
-  )
-  return [header.join(','), ...lines].join('\n')
+function passesDate(row: ReportRow, from: string, to: string): boolean {
+  if (!from && !to) return true
+  const d = row.date
+  if (!(d instanceof Date)) return true
+  return dateInRange(d, from, to)
 }
 
 export function Reports() {
-  const [module, setModule] = useState<ModuleKey>('purchases')
+  const [types, setTypes] = useState<ReportType[]>(['purchases'])
+  const [item, setItem] = useState<string[]>([])
+  const [supplier, setSupplier] = useState<string[]>([])
   const [branch, setBranch] = useState<string[]>([])
   const [category, setCategory] = useState<string[]>([])
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [search, setSearch] = useState('')
 
-  const isInventory = module === 'inventory'
+  const allRows = useMemo(() => getReportRows(types), [types])
+  const availableColumns = useMemo(() => unionColumns(types), [types])
 
-  const normalized = useMemo(() => normalize(module, branch, category), [module, branch, category])
-  const data = useMemo(
-    () => normalized.filter((r) => monthInRange(r.date, dateFrom, dateTo)),
-    [normalized, dateFrom, dateTo],
+  // "Select data → see every header those types have → pick which ones to
+  // keep": the column checklist always starts fully checked against
+  // whatever the current type selection makes available, and resets to
+  // fully checked again whenever that type selection changes.
+  const [selectedColumns, setSelectedColumns] = useState<string[]>(() => availableColumns.map((c) => c.key))
+  useEffect(() => {
+    setSelectedColumns(availableColumns.map((c) => c.key))
+  }, [availableColumns])
+
+  const itemOptions = useMemo(() => optionsFor(allRows, 'item', ITEMS), [allRows])
+  const supplierOptions = useMemo(() => optionsFor(allRows, 'supplier', SUPPLIERS), [allRows])
+  const branchOptions = useMemo(() => optionsFor(allRows, 'branch', BRANCHES), [allRows])
+  const categoryOptions = useMemo(() => optionsFor(allRows, 'category', ITEM_CATEGORIES), [allRows])
+
+  const filteredRows = useMemo(
+    () =>
+      allRows.filter(
+        (row) =>
+          passesMulti(row, 'item', item) &&
+          passesMulti(row, 'supplier', supplier) &&
+          passesMulti(row, 'branch', branch) &&
+          passesMulti(row, 'category', category) &&
+          passesDate(row, dateFrom, dateTo),
+      ),
+    [allRows, item, supplier, branch, category, dateFrom, dateTo],
   )
 
-  const tableRows = useMemo(() => {
-    if (!search.trim()) return data
+  const visibleColumns = useMemo(
+    () => availableColumns.filter((c) => selectedColumns.includes(c.key)),
+    [availableColumns, selectedColumns],
+  )
+
+  const searchedRows = useMemo(() => {
+    if (!search.trim()) return filteredRows
     const needle = search.toLowerCase()
-    return data.filter((r) =>
-      [r.ref, r.name, r.branch, r.category, r.status].some((v) => v.toLowerCase().includes(needle)),
-    )
-  }, [data, search])
+    return filteredRows.filter((row) => visibleColumns.some((col) => col.text(row[col.key], row).toLowerCase().includes(needle)))
+  }, [filteredRows, search, visibleColumns])
 
-  const total = data.reduce((s, r) => s + r.value, 0)
-  const count = data.length
-  const avg = count ? total / count : 0
-  const branches = new Set(data.map((r) => r.branch)).size
-  const topBranch = sumBy(data, 'branch')[0]?.branch as string | undefined
+  const tableColumns: Column[] = useMemo(
+    () =>
+      visibleColumns.map((col) => ({
+        key: col.key,
+        label: col.label,
+        align: col.align,
+        render: (row) => col.render!(row[col.key], row as ReportRow),
+      })),
+    [visibleColumns],
+  )
 
-  const valueLabel = isInventory ? 'Total Available Qty' : 'Total Value'
-  const fmtValue = (v: number) => (isInventory ? Math.round(v).toLocaleString() : money(v))
-
-  const trend = weeklyTrendPoints(
-    data.map((r) => ({ date: r.date, value: isInventory ? r.value : r.value / 1_000_000 })),
-  ).map((p) => ({ week: shortDate(p.week), value: Number(p.value.toFixed(2)) }))
-
-  const statusCounts = useMemo(() => {
-    const map = new Map<string, number>()
-    for (const r of data) map.set(r.status, (map.get(r.status) ?? 0) + 1)
-    return [...map.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value)
-  }, [data])
-
-  const columns: Column[] = [
-    { key: 'ref', label: 'Ref' },
-    { key: 'name', label: 'Name' },
-    { key: 'branch', label: 'Branch' },
-    { key: 'category', label: 'Category' },
-    {
-      key: 'value',
-      label: isInventory ? 'Available Qty' : 'Value',
-      align: 'right',
-      render: (row) => fmtValue(row.value as number),
-    },
-    { key: 'status', label: 'Status', render: (row) => <StatusBadge label={row.status as string} /> },
-  ]
-
-  function handleExport() {
-    const csv = toCsv(tableRows, isInventory)
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `qg-irs-report-${module}-${new Date().toISOString().slice(0, 10)}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
+  const typeLabels = types.map((t) => REPORT_TYPES.find((r) => r.value === t)!.label)
+  const stamp = new Date().toISOString().slice(0, 10)
+  const fileBase = `qg-irs-report-${types.join('-') || 'empty'}-${stamp}`
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <PageHeader
-          title="Reports"
-          subtitle="Consolidated cross-module summary — switch module to compare"
-          module="reports"
-        />
-        <SegmentedControl options={MODULES} value={module} onChange={setModule} />
-      </div>
-
-      <FilterBar search={{ value: search, onChange: setSearch, placeholder: 'Search by ref, name, branch, category, or status…' }}>
-        <DateRangeFilter label="Date" from={dateFrom} to={dateTo} onFromChange={setDateFrom} onToChange={setDateTo} />
-        <MultiSelectFilter label="Branch" options={purchaseBranchList} value={branch} onChange={setBranch} />
-        <MultiSelectFilter label="Category" options={purchaseCategoryList} value={category} onChange={setCategory} />
-      </FilterBar>
-
-      <HeroStat
-        label={valueLabel}
-        value={fmtValue(total)}
-        trendData={trend}
-        trendX="week"
-        trendY="value"
-        caption={isInventory ? 'Available qty per week, current filter' : 'PKR millions per week, current filter'}
+      <PageHeader
+        title="Reports"
+        subtitle="Build a custom report — pick your data, pick your columns, filter, then export"
+        module="reports"
       />
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-        <KpiCard label="Records" value={count.toLocaleString()} />
-        <KpiCard label={isInventory ? 'Avg Qty / Item' : 'Avg Value'} value={count ? fmtValue(avg) : '—'} />
-        <KpiCard label="Branches" value={`${branches}`} />
-        <KpiCard label="Top Branch" value={topBranch ?? '—'} sub="by value, current filter" />
-        <KpiCard label="Status Types" value={`${statusCounts.length}`} />
-      </div>
+      <FilterBar search={{ value: search, onChange: setSearch, placeholder: 'Search within results…' }}>
+        <MultiSelectFilter
+          label="Data"
+          options={REPORT_TYPES.map((t) => t.label)}
+          value={typeLabels}
+          onChange={(labels) => setTypes(labels.map((l) => REPORT_TYPES.find((r) => r.label === l)!.value))}
+        />
+        {itemOptions.length > 0 && <MultiSelectFilter label="Item Name" options={itemOptions} value={item} onChange={setItem} />}
+        {supplierOptions.length > 0 && <MultiSelectFilter label="Supplier" options={supplierOptions} value={supplier} onChange={setSupplier} />}
+        {branchOptions.length > 0 && <MultiSelectFilter label="Branch" options={branchOptions} value={branch} onChange={setBranch} />}
+        {categoryOptions.length > 0 && <MultiSelectFilter label="Category" options={categoryOptions} value={category} onChange={setCategory} />}
+        <DateRangeFilter label="Date" from={dateFrom} to={dateTo} onFromChange={setDateFrom} onToChange={setDateTo} />
+      </FilterBar>
 
-      <Disclosure title="View data / export">
-        <div className="flex flex-col gap-3 pb-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              onClick={handleExport}
-              disabled={tableRows.length === 0}
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-canvas-alt disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Download size={15} />
-              Export CSV
-            </button>
+      {types.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center text-sm text-muted">
+            Select at least one data type above to build a report.
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          <Card>
+            <CardContent className="p-4">
+              <ColumnPicker
+                label="Columns to show"
+                options={availableColumns.map((c) => ({ key: c.key, label: c.label }))}
+                value={selectedColumns}
+                onChange={setSelectedColumns}
+              />
+            </CardContent>
+          </Card>
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm font-medium text-muted">{searchedRows.length.toLocaleString()} records</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => exportExcel(searchedRows, visibleColumns, `${fileBase}.xlsx`)}
+                disabled={searchedRows.length === 0 || visibleColumns.length === 0}
+                className="inline-flex h-10 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-canvas-alt disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <FileSpreadsheet size={15} />
+                Export Excel
+              </button>
+              <button
+                onClick={() => exportPdf(searchedRows, visibleColumns, `${fileBase}.pdf`, 'QG-IRS Report')}
+                disabled={searchedRows.length === 0 || visibleColumns.length === 0}
+                className="inline-flex h-10 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-canvas-alt disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <FileText size={15} />
+                Export PDF
+              </button>
+            </div>
           </div>
-          <DataTable
-            columns={columns}
-            rows={tableRows as unknown as Record<string, unknown>[]}
-            statusColumn="status"
-            height={420}
-          />
-        </div>
-      </Disclosure>
+
+          <Card>
+            <CardContent className="p-0">
+              <DataTable columns={tableColumns} rows={searchedRows as unknown as Record<string, unknown>[]} height={520} />
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
   )
 }

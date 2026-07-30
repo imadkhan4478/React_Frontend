@@ -11,7 +11,7 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { CategoryBar } from '@/components/charts/CategoryBar'
 import { Donut } from '@/components/charts/Donut'
 import { RankedBar } from '@/components/charts/RankedBar'
-import { money, monthInRange } from '@/lib/format'
+import { money, dateInRange } from '@/lib/format'
 import {
   getPacking, packingStatusList, packingWorksList, packingCategoryList, packingBusinessTypeList, packingCustomerList,
 } from '@/lib/mockData/logistics'
@@ -38,7 +38,7 @@ export function PackingView() {
     [status, works, productCategory, businessType, customer],
   )
   const data = useMemo(
-    () => filtered.filter((r) => monthInRange(r.packing_date, dateFrom, dateTo)),
+    () => filtered.filter((r) => dateInRange(r.packing_date, dateFrom, dateTo)),
     [filtered, dateFrom, dateTo],
   )
   const tableRows = useMemo(() => {

@@ -14,7 +14,7 @@ import { CategoryBar } from '@/components/charts/CategoryBar'
 import { RankedBar } from '@/components/charts/RankedBar'
 import { Donut } from '@/components/charts/Donut'
 import { useTheme } from '@/theme/ThemeContext'
-import { monthInRange } from '@/lib/format'
+import { dateInRange } from '@/lib/format'
 import {
   getStock, type StockRow,
   inventoryStatusList, inventoryReorderStatusList, inventoryCategoryList, inventoryBranchList, inventoryItemList,
@@ -51,7 +51,7 @@ export function Inventory() {
     [status, reorderStatus, category, branch, item],
   )
   const dated = useMemo(
-    () => base.filter((r) => monthInRange(r.last_restocked, dateFrom, dateTo)),
+    () => base.filter((r) => dateInRange(r.last_restocked, dateFrom, dateTo)),
     [base, dateFrom, dateTo],
   )
 

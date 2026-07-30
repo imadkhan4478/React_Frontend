@@ -8,7 +8,7 @@ interface Props {
   onToChange: (value: string) => void
 }
 
-/** Month/year range picker — the date-based sibling of MultiSelectFilter,
+/** Exact-date range picker — the date-based sibling of MultiSelectFilter,
  * used for the "PO Date", "ETA", "Execution Date" style primary filters.
  * Empty string on either end means "unbounded" on that side. */
 export function DateRangeFilter({ label, from, to, onFromChange, onToChange }: Props) {
@@ -17,17 +17,17 @@ export function DateRangeFilter({ label, from, to, onFromChange, onToChange }: P
       <Label>{label}</Label>
       <div className="flex h-10 items-center gap-1.5">
         <input
-          type="month"
+          type="date"
           value={from}
           onChange={(e) => onFromChange(e.target.value)}
-          className="h-10 w-[132px] rounded-lg border border-line bg-surface px-2.5 text-sm text-ink transition-colors duration-150 hover:border-brand-light focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          className="h-10 w-[150px] rounded-lg border border-line bg-surface px-2.5 text-sm text-ink transition-colors duration-150 hover:border-brand-light focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
         />
         <span className="shrink-0 text-xs text-muted">to</span>
         <input
-          type="month"
+          type="date"
           value={to}
           onChange={(e) => onToChange(e.target.value)}
-          className="h-10 w-[132px] rounded-lg border border-line bg-surface px-2.5 text-sm text-ink transition-colors duration-150 hover:border-brand-light focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          className="h-10 w-[150px] rounded-lg border border-line bg-surface px-2.5 text-sm text-ink transition-colors duration-150 hover:border-brand-light focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
         />
       </div>
     </div>

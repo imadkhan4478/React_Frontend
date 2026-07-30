@@ -11,7 +11,7 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { CategoryBar } from '@/components/charts/CategoryBar'
 import { Donut } from '@/components/charts/Donut'
 import { RankedBar } from '@/components/charts/RankedBar'
-import { money, monthInRange } from '@/lib/format'
+import { money, dateInRange } from '@/lib/format'
 import {
   getShipments, shipmentStatusList, shipmentStageList, shipmentShippingLineList, shipmentCountryList, shipmentCustomerList,
 } from '@/lib/mockData/logistics'
@@ -48,7 +48,7 @@ export function ShipmentsView() {
     [status, stage, shippingLine, country, customer],
   )
   const data = useMemo(
-    () => filtered.filter((r) => monthInRange(r.port_in_date, dateFrom, dateTo)),
+    () => filtered.filter((r) => dateInRange(r.port_in_date, dateFrom, dateTo)),
     [filtered, dateFrom, dateTo],
   )
   const tableRows = useMemo(() => {
