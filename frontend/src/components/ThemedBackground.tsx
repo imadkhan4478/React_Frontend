@@ -58,24 +58,29 @@ interface ModulePhotoSet {
   dark: string
   /** Scrim strength override (0-1). Pages built from many small,
    * text-dense cards (filters, KPI grids, tables) need a stronger wash
-   * than Dashboard/Login's few large cards do — their bright/busy photo
+   * than Login's couple of large cards do — their bright/busy photo
    * detail was bleeding through the low-opacity Card surface enough to
    * hurt readability. Defaults to the original light 0.3 / dark 0.4. */
   scrim?: { light: number; dark: number }
+  /** Mutes the photo itself (desaturated, slightly dimmed) instead of
+   * just washing it harder — makes it read as a quiet backdrop rather
+   * than something competing for attention with the cards on top. */
+  dull?: boolean
 }
 
-const DENSE_SCRIM = { light: 0.62, dark: 0.56 }
+const DENSE_SCRIM = { light: 0.66, dark: 0.6 }
+const DULL_FILTER = 'saturate(0.65) brightness(0.94) contrast(0.97)'
 
 /** Modules with a real photo instead of the icon+aurora treatment.
  * Add an entry here (plus a light/dark import above) to give another
  * module the same "photo behind glass cards" look Dashboard and
  * Logistics have. */
 const MODULE_PHOTOS: Partial<Record<PageKey | 'login', ModulePhotoSet>> = {
-  dashboard: { light: dashboardLight, dark: dashboardDark },
-  logistics: { light: logisticsLight, dark: logisticsDark, scrim: DENSE_SCRIM },
-  imports: { light: importsLight, dark: importsDark, scrim: DENSE_SCRIM },
-  purchases: { light: purchasesLight, dark: purchasesDark, scrim: DENSE_SCRIM },
-  inventory: { light: inventoryLight, dark: inventoryDark, scrim: DENSE_SCRIM },
+  dashboard: { light: dashboardLight, dark: dashboardDark, scrim: { light: 0.36, dark: 0.42 }, dull: true },
+  logistics: { light: logisticsLight, dark: logisticsDark, scrim: DENSE_SCRIM, dull: true },
+  imports: { light: importsLight, dark: importsDark, scrim: DENSE_SCRIM, dull: true },
+  purchases: { light: purchasesLight, dark: purchasesDark, scrim: DENSE_SCRIM, dull: true },
+  inventory: { light: inventoryLight, dark: inventoryDark, scrim: DENSE_SCRIM, dull: true },
   login: { light: loginLight, dark: loginDark },
 }
 
@@ -84,7 +89,12 @@ function ModulePhoto({ photo, className }: { photo: ModulePhotoSet; className?: 
   const scrimOpacity = dark ? (photo.scrim?.dark ?? 0.4) : (photo.scrim?.light ?? 0.3)
   return (
     <div aria-hidden className={cn('pointer-events-none absolute inset-0 z-0 overflow-hidden', className)}>
-      <img src={dark ? photo.dark : photo.light} alt="" className="h-full w-full object-cover" />
+      <img
+        src={dark ? photo.dark : photo.light}
+        alt=""
+        className="h-full w-full object-cover"
+        style={photo.dull ? { filter: DULL_FILTER } : undefined}
+      />
       {/* Scrim so cards can go semi-transparent anywhere on the page and
           still keep their text readable over busy parts of the photo. */}
       <div

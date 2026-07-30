@@ -11,8 +11,10 @@ function Card({ className, ...props }: React.ComponentProps<'div'>) {
         // (ThemedBackground's MODULE_PHOTOS): modules without a photo just
         // show canvas + the faint aurora/icon ambient layer through it,
         // which still reads fine — no need for a second, more-opaque
-        // variant just for those pages.
-        'rounded-2xl border-2 border-line/80 bg-surface/28 shadow-sm dark:border-line/45 dark:bg-surface/42',
+        // variant just for those pages. Nudged up from /28 · /42 so
+        // content stays clearly readable — still genuinely translucent,
+        // the photo shows through, just not fighting the text on top of it.
+        'rounded-2xl border-2 border-line/80 bg-surface/40 shadow-sm dark:border-line/45 dark:bg-surface/54',
         'shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_1px_2px_rgba(16,24,40,0.04)]',
         'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_2px_rgba(0,0,0,0.25)]',
         'transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md',
