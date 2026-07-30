@@ -101,6 +101,8 @@ export interface ConsignmentRow {
   arrivedAtPort: string | null
   gateOut: string | null
   freeDays: number | null
+  bankChargesPkr: number   // sum of swift/negotiation/commission across payments
+  demurragePkr: number     // detention/demurrage billed at the port
   missing: string[] // named gaps, not a count
 }
 
@@ -191,6 +193,10 @@ function makeRow(i: number): ConsignmentRow {
     clearingAgent: stageIndex >= 4 ? pick(['Prime Cargo Services', 'Indus Clearing Co.', 'Sea Link Logistics']) : null,
     arrivedAtPort: arrived, gateOut: cleared,
     freeDays: stageIndex >= 4 ? randInt(0, 9) : null,
+    // Bank charges accrue once a payment instrument is in play; demurrage only
+    // if it sat at the port past its free days (stage 4+).
+    bankChargesPkr: Math.round(foreignValue * exchangeRate * (0.002 + rng() * 0.004)),
+    demurragePkr: stageIndex >= 4 && rng() > 0.6 ? randInt(20000, 180000) : 0,
     missing,
   }
 }
@@ -253,7 +259,6 @@ export interface ConsignmentFilters {
   status?: string[]
   requisition?: string[]
   supplier?: string[]
-  paymentInstrument?: string[]
   stage?: StageKey
   includeClosed?: boolean
   missingOnly?: boolean
@@ -274,11 +279,10 @@ export function getConsignments(f: ConsignmentFilters = {}): ConsignmentRow[] {
     if (!inSet(r.branch, f.branch)) return false
     if (!inSet(r.status, f.status)) return false
     if (!inSet(r.supplier, f.supplier)) return false
-    if (!inSet(r.paymentInstrument, f.paymentInstrument)) return false
     if (f.requisition?.length && !f.requisition.some((x) => r.requisitionSummary.includes(x))) return false
     if (f.missingOnly && r.missing.length === 0) return false
     if (q) {
-      const hay = [r.systemId, r.supplier, r.origin, r.branch, ...r.items.map((i) => `${i.itemName} ${i.referenceNo}`)]
+      const hay = [r.systemId, r.supplier, r.origin, r.branch, r.instrumentNo ?? '', ...r.items.map((i) => `${i.itemName} ${i.referenceNo}`)]
         .join(' ').toLowerCase()
       if (!hay.includes(q)) return false
     }

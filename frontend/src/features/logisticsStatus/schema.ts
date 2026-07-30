@@ -70,11 +70,6 @@ export const consignmentSchema = z
     originProvince: z.string().optional(),
     customerName: z.string().min(1, 'Customer name is required'),
     items: z.array(logisticsItemSchema).default([]),
-    /** When the order was first raised — upstream of any transport planning. */
-    requisitionDate: z.string().optional(),
-    /** When the customer actually needs it. Drives the delay-vs-delivery
-     *  figure shown on the list, same convention as importsStatus. */
-    requiredDate: z.string().optional(),
   })
   .superRefine((val, ctx) => {
     if (val.orderType === 'Export') {
@@ -202,8 +197,6 @@ export const consignmentDraftSchema = z
     originProvince: z.string().optional(),
     customerName: z.string().min(1, 'Customer name is required'),
     items: z.array(logisticsItemSchema).default([]),
-    requisitionDate: z.string().optional(),
-    requiredDate: z.string().optional(),
   })
   .merge(transportationSchema)
   .merge(shippingSchema)
@@ -219,8 +212,6 @@ export const DRAFT_DEFAULT_VALUES: LogisticsDraft = {
   originProvince: '',
   customerName: '',
   items: [emptyItem('item-1')],
-  requisitionDate: '',
-  requiredDate: '',
   transporterName: '',
   vehicleType: '',
   gateOutDate: '',
@@ -275,7 +266,7 @@ export const WIZARD_STEPS: WizardStepDef[] = [
     label: 'Order Details',
     fields: [
       'orderType', 'originCountry', 'originCity', 'originProvince', 'customerName',
-      'items', 'requisitionDate', 'requiredDate',
+      'items',
     ],
   },
   {
@@ -344,14 +335,6 @@ export function daysBetween(fromISO?: string, toISO?: string): number | null {
   const b = new Date(toISO).getTime()
   if (Number.isNaN(a) || Number.isNaN(b)) return null
   return Math.round((b - a) / 86_400_000)
-}
-
-/** How late the order will actually land against when it was required.
- *  Positive = late, zero/negative = on time or ahead. actualDeliveryDate is
- *  the closest thing this schema has to importsStatus's ETA — the date goods
- *  reach QFL (export) or the customer (local, which closes the order). */
-export function requiredVsDeliveryDelay(d: { requiredDate?: string; actualDeliveryDate?: string }): number | null {
-  return daysBetween(d.requiredDate, d.actualDeliveryDate)
 }
 
 /** Total quantity across every item line. */

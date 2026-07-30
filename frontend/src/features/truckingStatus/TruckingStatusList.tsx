@@ -186,6 +186,8 @@ function SourceTag({ row }: { row: TruckingRow }) {
       ? { backgroundColor: 'var(--color-info-bg)', color: 'var(--color-info)' }
       : row.source === 'from-import-fob'
         ? { backgroundColor: 'var(--color-watch-bg)', color: 'var(--color-watch)' }
+      : row.source === 'from-export'
+        ? { backgroundColor: 'var(--color-healthy-bg)', color: 'var(--color-healthy)' }
         : undefined
   return (
     <span

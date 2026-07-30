@@ -243,9 +243,46 @@ function deriveFromImportsFob(): TruckingRow[] {
   }
 }
 
+/**
+ * Export orders needing outbound trucking to the port. An export shipment has
+ * to be trucked from the factory/QFL to the port of loading before it can
+ * sail — that inland leg is Trucking's job, the mirror of the inbound leg it
+ * does for FOB imports. Sourced from Logistics export orders that have reached
+ * a stage where the goods are ready to move but not yet on the water.
+ */
+function deriveFromExports(): TruckingRow[] {
+  try {
+    const rows = logisticsData.getLogisticsOrders() ?? []
+    // Export orders that are packed/ready and heading for the port, but not
+    // yet sailed — those are the ones needing the truck to the port.
+    const READY_TO_PORT = new Set(['Under Packing', 'Transportation', 'Under Shipping Arrangement', 'At QFL'])
+    return rows
+      .filter((r) => r.orderType === 'Export' && READY_TO_PORT.has(r.status))
+      .map((r): TruckingRow => {
+        const first = r.items[0]
+        const more = r.items.length - 1
+        const itemSummary = first ? `${first.itemDetail}${more > 0 ? ` +${more} more` : ''}` : 'No items'
+        return {
+          systemId: `TR-EXP-${r.systemId}`,
+          source: 'from-export',
+          sourceRef: r.systemId,
+          movementType: 'Outbound',
+          itemDetails: itemSummary,
+          pickup: r.originFactory || 'Factory',
+          destination: r.pol || 'Port of loading',
+          referenceNo: first?.exportNo || r.systemId,
+          vehicles: [],
+          open: true,
+        }
+      })
+  } catch {
+    return []
+  }
+}
+
 /** The live union of derived open requests (never copied). */
 export function deriveOpenRequests(): TruckingRow[] {
-  return [...deriveFromLogistics(), ...deriveFromImportsFob()]
+  return [...deriveFromLogistics(), ...deriveFromImportsFob(), ...deriveFromExports()]
 }
 
 // --- public API (mirrors logisticsStatusData) ------------------------------
@@ -357,5 +394,5 @@ export function rowGrossWeight(row: TruckingRow): number {
 
 /** Source provenance tag for the list. */
 export function sourceLabel(source: TruckingSource): string {
-  return source === 'from-logistics' ? 'Logistics' : source === 'from-import-fob' ? 'Import FOB' : 'Manual'
+  return source === 'from-logistics' ? 'Logistics' : source === 'from-import-fob' ? 'Import FOB' : source === 'from-export' ? 'Export' : 'Manual'
 }

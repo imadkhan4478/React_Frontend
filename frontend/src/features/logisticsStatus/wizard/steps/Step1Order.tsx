@@ -2,7 +2,7 @@ import { useFormContext, useFieldArray, useWatch } from 'react-hook-form'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import {
-  ORDER_TYPES, emptyItem, itemPendingFields, requiredVsDeliveryDelay,
+  ORDER_TYPES, emptyItem, itemPendingFields,
   type LogisticsDraft, type LogisticsItem,
 } from '../../schema'
 
@@ -13,8 +13,7 @@ const selectClass =
 /**
  * Step 1 — Order details.
  *
- * Order-level fields (type, origin, customer, requisition/required dates)
- * apply to the whole order. Item detail, quantity, both weights, IDM, export
+ * Order-level fields (type, origin, customer) apply to the whole order. Item detail, quantity, both weights, IDM, export
  * no. and batch no. are per item — an order can bundle several items, and an
  * export order's items can carry different export numbers from each other.
  */
@@ -27,11 +26,6 @@ export function Step1Order() {
 
   const { fields, append, remove } = useFieldArray({ control, name: 'items' })
   const items = watch('items')
-
-  const requiredDelay = requiredVsDeliveryDelay({
-    requiredDate: watch('requiredDate'),
-    actualDeliveryDate: watch('actualDeliveryDate'),
-  })
 
   return (
     <div className="space-y-5">
@@ -77,31 +71,6 @@ export function Step1Order() {
             <Label htmlFor="customerName">Customer Name</Label>
             <Input id="customerName" {...register('customerName')} />
             {errors.customerName && <p className="text-xs text-risk">{errors.customerName.message}</p>}
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="requisitionDate">
-              Requisition Date <span className="font-normal text-muted">(when the order was first raised)</span>
-            </Label>
-            <Input id="requisitionDate" type="date" {...register('requisitionDate')} />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="requiredDate">
-              Required Date <span className="font-normal text-muted">(when the customer needs it)</span>
-            </Label>
-            <Input id="requiredDate" type="date" {...register('requiredDate')} />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label>Required vs. Delivery</Label>
-            <div className="flex h-10 items-center px-1 text-sm tabular-nums">
-              {requiredDelay === null
-                ? <span className="text-muted">Add both dates to see this</span>
-                : requiredDelay <= 0
-                  ? <span className="text-[var(--color-healthy)]">On time{requiredDelay < 0 ? ` · ${-requiredDelay}d ahead` : ''}</span>
-                  : <span className="font-medium text-[var(--color-risk)]">{requiredDelay}d late</span>}
-            </div>
           </div>
         </div>
       </section>

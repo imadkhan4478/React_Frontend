@@ -244,35 +244,36 @@ export function ImportsStatusDetail() {
         )}
       </Section>
 
-      {/* 7 — landed cost */}
-      <Section id="s-landed-cost" title="Landed cost" editStep="landed-cost" edit={<EditLink step="landed-cost" />}>
+      {/* 7 — total expenditure (derived from earlier sections, read-only) */}
+      <Section id="s-expenditure" title="Total expenditure">
         <div className="overflow-auto rounded-lg border border-line">
           <table className="w-full text-sm">
-            <thead className="bg-canvas-alt text-xs text-muted">
-              <tr>
-                <th className="px-3 py-2 text-left">Item</th>
-                <th className="px-3 py-2 text-right">ELC (PKR)</th>
-                <th className="px-3 py-2 text-right">ALC (PKR)</th>
-              </tr>
-            </thead>
             <tbody>
-              {row.items.map((it, i) => (
-                <tr key={i} className="border-t border-line">
-                  <td className="px-3 py-2">{it.itemName}</td>
-                  <td className="px-3 py-2 text-right">
-                    <Tag tone="neutral">Pending</Tag>
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <Tag tone="warning" title="Not yet entered">Pending</Tag>
-                  </td>
-                </tr>
-              ))}
+              <tr className="border-t border-line first:border-t-0">
+                <td className="px-3 py-2 text-muted">Goods value <span className="text-[11px]">(Finance, at booked rate)</span></td>
+                <td className="px-3 py-2 text-right tabular-nums">{pkr(pkrValue(row))}</td>
+              </tr>
+              <tr className="border-t border-line">
+                <td className="px-3 py-2 text-muted">Bank charges <span className="text-[11px]">(Payments)</span></td>
+                <td className="px-3 py-2 text-right tabular-nums">{pkr(row.bankChargesPkr)}</td>
+              </tr>
+              <tr className="border-t border-line">
+                <td className="px-3 py-2 text-muted">Demurrage <span className="text-[11px]">(Clearance)</span></td>
+                <td className="px-3 py-2 text-right tabular-nums">{row.demurragePkr ? pkr(row.demurragePkr) : '—'}</td>
+              </tr>
             </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-line font-semibold">
+                <td className="px-3 py-2">Total visible expenditure</td>
+                <td className="px-3 py-2 text-right tabular-nums">{pkr(pkrValue(row) + row.bankChargesPkr + row.demurragePkr)}</td>
+              </tr>
+            </tfoot>
           </table>
         </div>
         <p className="mt-3 text-xs italic text-muted">
-          Actual landed cost is entered manually once accounts finalise duty, freight and agent fees.
-          Until then this consignment is excluded from supplier comparison reports.
+          Summed from figures already captured in Finance, Payments and Clearance — the system
+          doesn't compute a definitive landed cost, since accounts carry duty, freight and agent
+          fees it can't see. This is the shipment's visible expenditure, for reference.
         </p>
       </Section>
     </div>
@@ -293,7 +294,7 @@ function KeyFigure({ label, value, sub, warn }: { label: string; value: string; 
 
 function Section({
   id, title, children, edit,
-}: { id: string; title: string; editStep: string; children: React.ReactNode; edit?: React.ReactNode }) {
+}: { id: string; title: string; editStep?: string; children: React.ReactNode; edit?: React.ReactNode }) {
   return (
     <section id={id} className="scroll-mt-28 rounded-xl border border-line bg-surface">
       <div className="flex items-center gap-2 border-b border-line px-4 py-2.5">

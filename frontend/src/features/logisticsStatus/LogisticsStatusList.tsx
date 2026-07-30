@@ -11,7 +11,7 @@ import { useAuth } from '@/features/auth/AuthContext'
 import { can } from '@/lib/roleAccess'
 import { exportNumbers, totalQuantity } from '@/features/logisticsStatus/schema'
 import {
-  getLogisticsOrders, requiredDelayDays,
+  getLogisticsOrders, deriveImportFobRequests,
   customerList, orderTypeList, statusList,
   type LogisticsOrder, type LogisticsFilters,
 } from '@/lib/logisticsStatusData'
@@ -28,11 +28,12 @@ const dateShort = (v?: string) => {
 /**
  * Logistics Status — list view.
  *
- * Follows the same filtering pattern as Imports Status: FilterBar with
- * MultiSelectFilter children, a search box, and CSV/PDF export on the
- * filtered set. An order can carry several items (each with its own export
- * number for export orders) — the list shows the first item plus a count of
- * how many more, same convention as the Imports list's item column.
+ * Two tables: the team's own orders (native, editable), and — separately — a
+ * read-only "Open Requests: Import FOB" feed. On FOB terms Qadri owns the
+ * goods from the origin port, so Logistics arranges the sea freight and
+ * clearing agent for them; those consignments live in Imports Status, so the
+ * request rows link back there and cannot be edited here (the record's home
+ * is Imports). Same live-derivation idea Trucking Status uses.
  */
 export function LogisticsStatusList() {
   const navigate = useNavigate()
@@ -40,12 +41,13 @@ export function LogisticsStatusList() {
   const [filters, setFilters] = useState<LogisticsFilters>({})
 
   const rows = useMemo(() => getLogisticsOrders(filters), [filters])
+  const fobRequests = useMemo(() => deriveImportFobRequests(), [])
+  const canEdit = can(user, 'editAny')
 
   const exportCsv = () => {
     const cols = [
       'System ID', 'Order Type', 'Customer', 'Items', 'Total Quantity', 'Export No(s).',
-      'Origin', 'Destination', 'Status', 'Requisition date', 'Required date',
-      'Delay (needed vs. delivery)', 'Containers', 'Gate Out Date', 'Actual Delivery Date',
+      'Origin', 'Destination', 'Status', 'Containers', 'Gate Out Date', 'Actual Delivery Date',
     ]
     const line = (o: LogisticsOrder) => [
       o.systemId, o.orderType, o.customerName,
@@ -53,8 +55,7 @@ export function LogisticsStatusList() {
       totalQuantity(o.items),
       exportNumbers(o.items).join('; '),
       o.orderType === 'Export' ? o.originCountry : `${o.originCity}, ${o.originProvince}`,
-      o.destination, o.status, o.requisitionDate, o.requiredDate,
-      requiredDelayDays(o) ?? '',
+      o.destination, o.status,
       o.containers.map((c) => c.containerType).join('; '),
       o.gateOutDate, o.actualDeliveryDate,
     ].map((v) => {
@@ -116,11 +117,10 @@ export function LogisticsStatusList() {
                 <th className="px-3 py-2 text-left">Items</th>
                 <th className="px-3 py-2 text-right">Total qty</th>
                 <th className="px-3 py-2 text-left">Status</th>
-                <th className="px-3 py-2 text-left">Requisition / Required</th>
-                <th className="px-3 py-2 text-right">Delay (needed vs. delivery)</th>
                 <th className="px-3 py-2 text-left">Containers</th>
                 <th className="px-3 py-2 text-left">Destination</th>
                 <th className="px-3 py-2 text-right">Gate out</th>
+                <th className="px-3 py-2 text-left"></th>
               </tr>
             </thead>
             <tbody>
@@ -149,25 +149,6 @@ export function LogisticsStatusList() {
                     <td className="px-3 py-2">
                       <StatusBadge label={o.status} />
                     </td>
-                    <td className="px-3 py-2 text-[13px] tabular-nums">
-                      <div>{dateShort(o.requisitionDate)} <span className="text-muted">req'd</span></div>
-                      <div>{dateShort(o.requiredDate)} <span className="text-muted">needed</span></div>
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      {(() => {
-                        const d = requiredDelayDays(o)
-                        if (d === null) return <span className="text-muted" title="Needs both a required date and an actual delivery date">—</span>
-                        if (d <= 0) return <span className="tabular-nums text-[var(--color-healthy)]">{d === 0 ? 'on time' : `${-d}d ahead`}</span>
-                        return (
-                          <span
-                            className="inline-block rounded border border-[var(--color-risk)] bg-[var(--color-risk-bg)] px-1.5 py-0.5 text-[11px] tabular-nums text-[var(--color-risk)]"
-                            title="Actual/expected delivery is later than the date this was required by"
-                          >
-                            {d}d late
-                          </span>
-                        )
-                      })()}
-                    </td>
                     <td className="px-3 py-2 text-[13px] text-muted">
                       {o.containers.length === 0
                         ? '—'
@@ -179,11 +160,83 @@ export function LogisticsStatusList() {
                       {o.orderType === 'Export' ? o.destination : `${o.originCity}, ${o.originProvince}`}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{dateShort(o.gateOutDate)}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => navigate(`/logistics-status/${o.systemId}`)}
+                          className="rounded border border-line px-2.5 py-1 text-[11px] hover:border-muted"
+                        >
+                          Open
+                        </button>
+                        {canEdit && (
+                          <button
+                            onClick={() => navigate(`/logistics-status/${o.systemId}/edit/order`)}
+                            className="rounded border border-line px-2.5 py-1 text-[11px] hover:border-muted"
+                          >
+                            Edit
+                          </button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 )
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Open Requests — Import FOB (read-only; the record lives in Imports) */}
+      {fobRequests.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold">Open Requests — Import FOB</h3>
+            <span className="rounded-full bg-[var(--color-watch-bg)] px-2 py-0.5 text-[11px] text-[var(--color-watch)]">{fobRequests.length}</span>
+            <span className="text-xs text-muted">FOB imports needing shipping &amp; clearing-agent arrangement — managed in Imports Status</span>
+          </div>
+          <div className="overflow-auto rounded-xl border border-line bg-surface">
+            <table className="w-full text-sm">
+              <thead className="bg-canvas-alt text-xs text-muted">
+                <tr>
+                  <th className="px-3 py-2 text-left">Source consignment</th>
+                  <th className="px-3 py-2 text-left">Branch</th>
+                  <th className="px-3 py-2 text-left">Items</th>
+                  <th className="px-3 py-2 text-left">Origin</th>
+                  <th className="px-3 py-2 text-left">Status</th>
+                  <th className="px-3 py-2 text-left">Clearing agent</th>
+                  <th className="px-3 py-2 text-left"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {fobRequests.map((r) => (
+                  <tr
+                    key={r.systemId}
+                    className="cursor-pointer border-t border-line hover:bg-canvas-alt"
+                    onClick={() => navigate(`/imports-status/${r.sourceRef}`)}
+                  >
+                    <td className="px-3 py-2 font-semibold tabular-nums">{r.sourceRef}</td>
+                    <td className="px-3 py-2">{r.customerName}</td>
+                    <td className="px-3 py-2">{r.itemSummary}</td>
+                    <td className="px-3 py-2 text-muted">{r.origin}</td>
+                    <td className="px-3 py-2"><StatusBadge label={r.status} /></td>
+                    <td className="px-3 py-2 text-[13px]">
+                      {r.needsClearingAgent
+                        ? <span className="rounded border border-[var(--color-watch)]/30 bg-[var(--color-watch-bg)] px-1.5 py-0.5 text-[11px] text-[var(--color-watch)]">Needs agent</span>
+                        : <span className="text-muted">Assigned</span>}
+                    </td>
+                    <td className="px-3 py-2">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); navigate(`/imports-status/${r.sourceRef}`) }}
+                        className="rounded border border-line px-2.5 py-1 text-[11px] hover:border-muted"
+                      >
+                        Open in Imports
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
