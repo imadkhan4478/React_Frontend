@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { useAuth } from '@/features/auth/AuthContext'
 import { can } from '@/lib/roleAccess'
 import {
-  WIZARD_STEPS, daysBetween, requiredVsDeliveryDelay,
+  WIZARD_STEPS, daysBetween,
   totalQuantity, totalNetWeight, totalGrossWeight, ratePerWeight, exportNumbers,
 } from './schema'
 import { getLogisticsOrder } from '@/lib/logisticsStatusData'
@@ -77,7 +77,6 @@ export default function LogisticsStatusDetail() {
   const grossW = totalGrossWeight(row.items)
   const rate = ratePerWeight(row.actualFreight, row.items)
   const exportNos = exportNumbers(row.items)
-  const requiredDelay = requiredVsDeliveryDelay(row)
   const transportDelay = daysBetween(row.dispatchNoteDate, row.gateOutDate)
   const arrivalDelay = daysBetween(row.croArrivalDate, row.actualArrivalDate)
 
@@ -117,14 +116,9 @@ export default function LogisticsStatusDetail() {
       </div>
 
       {/* key figures */}
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-4 lg:grid-cols-7">
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-3 lg:grid-cols-6">
         <KeyFigure label="Total quantity" value={num(qty)} sub={`${row.items.length} item line${row.items.length === 1 ? '' : 's'}`} />
         <KeyFigure label="Total weight" value={`${num(grossW)} kg`} sub={`${num(netW)} kg net`} />
-        <KeyFigure
-          label="Required by" value={dateShort(row.requiredDate)}
-          sub={requiredDelay === null ? 'Needs required + delivery date' : requiredDelay <= 0 ? (requiredDelay === 0 ? 'On time' : `${-requiredDelay}d ahead`) : `${requiredDelay}d late`}
-          warn={requiredDelay !== null && requiredDelay > 0}
-        />
         <KeyFigure label="Freight" value={pkr(row.actualFreight)} sub={rate !== null ? `${rate.toFixed(2)} /kg` : 'Rate needs freight + weight'} />
         <KeyFigure label="Containers" value={row.containers.length ? String(row.containers.length) : '—'} sub={row.containers.length ? [...new Set(row.containers.map((c) => c.containerType))].join(', ') : 'None yet'} />
         <KeyFigure label="Expenditure" value={pkr(costTotal || undefined)} sub={`${costs.length} cost line${costs.length === 1 ? '' : 's'} tracked`} />
@@ -148,8 +142,6 @@ export default function LogisticsStatusDetail() {
           <Field label="Order type" value={row.orderType} />
           <Field label="Customer" value={row.customerName} span={2} />
           <Field label="Origin" value={isExport ? row.originCountry : `${row.originCity}, ${row.originProvince}`} />
-          <Field label="Requisition date" value={dateShort(row.requisitionDate)} mono />
-          <Field label="Required date" value={dateShort(row.requiredDate)} mono />
         </FieldGrid>
 
         <div className="mt-4 overflow-auto rounded-lg border border-line">

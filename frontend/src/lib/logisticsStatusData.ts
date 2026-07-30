@@ -1,12 +1,17 @@
 import {
   ORDER_TYPES,
   statusesFor,
-  requiredVsDeliveryDelay,
   type LogisticsDraft,
   type LogisticsItem,
   type LogisticsContainer,
   type OrderType,
 } from '@/features/logisticsStatus/schema'
+// Cross-module: FOB imports need Logistics to arrange the sea freight and
+// clearing agent, so they surface here as read-only open requests — the
+// mirror of what Trucking does for the same consignments (see
+// lib/truckingStatusData.ts deriveFromImportsFob).
+import * as importsData from '@/lib/importsStatusData'
+import { CONSIGNMENT_STATUSES } from '@/features/importsStatus/schema'
 
 /**
  * Logistics Status mock data.
@@ -92,11 +97,6 @@ function makeOrder(i: number): LogisticsOrder {
   const gateOutDate = hasTransport ? addDays(dispatchNoteDate, randInt(0, 3)) : ''
   const actualDeliveryDate = stageIndex >= statuses.length - 1 ? addDays(gateOutDate || '2026-05-01', randInt(3, 20)) : ''
 
-  // Requisition sits upstream of transport planning entirely — raised well
-  // before dispatch, same as importsStatus's requisitionDate/requiredDate.
-  const requisitionDate = rng() > 0.15 ? addDays('2026-02-15', randInt(0, 45)) : ''
-  const requiredDate = requisitionDate ? addDays(requisitionDate, randInt(45, 130)) : ''
-
   const province = pick(PROVINCES)
   const hasContainers = isExport && stageIndex >= 3
   const containers: LogisticsContainer[] = hasContainers
@@ -115,8 +115,6 @@ function makeOrder(i: number): LogisticsOrder {
     originProvince: isExport ? '' : province,
     customerName: pick(CUSTOMERS),
     items,
-    requisitionDate,
-    requiredDate,
 
     transporterName: hasTransport ? pick(TRANSPORTERS) : '',
     vehicleType: hasTransport ? pick(VEHICLE_TYPES) : '',
@@ -189,10 +187,6 @@ export function getLogisticsOrders(f: LogisticsFilters = {}): LogisticsOrder[] {
 export const getLogisticsOrder = (systemId: string): LogisticsOrder | undefined =>
   ALL.find((o) => o.systemId === systemId)
 
-/** Same convention as importsStatusData's requiredDelayDays — positive means
- *  late, null (never 0) means one of the two dates isn't filled in yet. */
-export const requiredDelayDays = (o: LogisticsOrder) => requiredVsDeliveryDelay(o)
-
 /** Mutates the in-memory mock store — same convention as updateConsignment
  *  in lib/importsStatusData.ts. Unlike Imports Status, `LogisticsDraft` is
  *  already the full record shape, so this is a straight replace, no
@@ -201,6 +195,53 @@ export function updateLogisticsOrder(systemId: string, data: LogisticsDraft): vo
   const idx = ALL.findIndex((o) => o.systemId === systemId)
   if (idx === -1) return
   ALL[idx] = { ...data, systemId }
+}
+
+/**
+ * An FOB import consignment surfaced as a Logistics open request. On FOB
+ * terms the buyer (Qadri) owns the goods from the origin port, so Qadri's
+ * Logistics team books the sea freight and appoints the clearing agent —
+ * exactly the work this module does for its own export/local orders. These
+ * are READ-ONLY: the real record lives in Imports Status, so the request row
+ * links back there rather than opening a Logistics editor. Derived live from
+ * the Imports store, never copied, so it always reflects the source.
+ */
+export interface LogisticsFobRequest {
+  systemId: string           // TR-style synthetic id, e.g. LOG-REQ-QC-2026-0148
+  sourceRef: string          // the real consignment systemId in Imports
+  customerName: string       // the branch taking delivery
+  itemSummary: string
+  origin: string             // origin port / country
+  status: string             // the consignment's current status
+  needsClearingAgent: boolean
+  open: true
+}
+
+/** FOB imports past Under Production that still need shipping / clearing
+ *  arrangement. Mirror of truckingStatusData's deriveFromImportsFob. */
+export function deriveImportFobRequests(): LogisticsFobRequest[] {
+  try {
+    const rows = importsData.getConsignments() ?? []
+    const productionIdx = CONSIGNMENT_STATUSES.indexOf('Under Production')
+    return rows
+      .filter((r) => r.incoterm === 'FOB' && CONSIGNMENT_STATUSES.indexOf(r.status) > productionIdx)
+      .map((r): LogisticsFobRequest => {
+        const first = r.items[0]
+        const more = r.items.length - 1
+        return {
+          systemId: `LOG-REQ-${r.systemId}`,
+          sourceRef: r.systemId,
+          customerName: r.branch,
+          itemSummary: first ? `${first.itemName}${more > 0 ? ` +${more} more` : ''}` : 'No items',
+          origin: r.origin,
+          status: r.status,
+          needsClearingAgent: !r.clearingAgent,
+          open: true,
+        }
+      })
+  } catch {
+    return []
+  }
 }
 
 export const customerList = [...CUSTOMERS]

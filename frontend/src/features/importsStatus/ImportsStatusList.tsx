@@ -12,7 +12,7 @@ import { StatusPill, Tag, PaymentDot } from './components/atoms'
 import { pkr, fx, dateShort, days as daysFmt, num } from './format'
 import {
   getConsignments, stageCounts, pkrValue, slippageDays, freeDaysLeft, requiredDelayDays,
-  branchList, statusList, supplierList, requisitionList, paymentInstrumentList,
+  branchList, statusList, supplierList, requisitionList,
   type ConsignmentRow, type ConsignmentFilters, type StageKey,
 } from '@/lib/importsStatusData'
 
@@ -184,16 +184,22 @@ export function ImportsStatusList() {
       ),
     },
     {
-      key: 'payment', label: 'Payment', width: 140,
+      key: 'reference', label: 'Reference', width: 130,
+      sortValue: (r) => r.instrumentNo ?? '',
+      render: (r) => (
+        r.instrumentNo
+          ? <span className="tabular-nums text-[13px] font-medium">{r.instrumentNo}</span>
+          : <span className="text-muted text-[13px]" title="No instrument number entered yet">—</span>
+      ),
+    },
+    {
+      key: 'payment', label: 'Payment', width: 130,
       sortValue: (r) => r.paymentState,
       render: (r) => (
-        <div className="text-[13px]">
-          <span className="whitespace-nowrap">
-            <PaymentDot state={r.paymentState} />
-            {r.paymentLabel}
-          </span>
-          {r.instrumentNo && <div className="mt-0.5 pl-[13px] text-[11px] tabular-nums text-muted">{r.instrumentNo}</div>}
-        </div>
+        <span className="whitespace-nowrap text-[13px]">
+          <PaymentDot state={r.paymentState} />
+          {r.paymentLabel}
+        </span>
       ),
     },
     {
@@ -281,14 +287,13 @@ export function ImportsStatusList() {
         search={{
           value: filters.search ?? '',
           onChange: (search) => setFilters((f) => ({ ...f, search })),
-          placeholder: 'ID, reference, supplier, item…',
+          placeholder: 'ID, LC/DP reference, supplier, item…',
         }}
       >
         <MultiSelectFilter label="Branch" options={branchList} value={filters.branch ?? []} onChange={(branch) => setFilters((f) => ({ ...f, branch }))} />
         <MultiSelectFilter label="Status" options={statusList} value={filters.status ?? []} onChange={(status) => setFilters((f) => ({ ...f, status }))} />
         <MultiSelectFilter label="Requisition" options={requisitionList} value={filters.requisition ?? []} onChange={(requisition) => setFilters((f) => ({ ...f, requisition }))} />
         <MultiSelectFilter label="Supplier" options={supplierList} value={filters.supplier ?? []} onChange={(supplier) => setFilters((f) => ({ ...f, supplier }))} />
-        <MultiSelectFilter label="Payment instrument" options={paymentInstrumentList} value={filters.paymentInstrument ?? []} onChange={(paymentInstrument) => setFilters((f) => ({ ...f, paymentInstrument }))} />
         <label className="flex items-center gap-2 text-sm text-ink">
           <input type="checkbox" checked={missingOnly} onChange={(e) => setMissingOnly(e.target.checked)} />
           Missing information only

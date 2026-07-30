@@ -18,11 +18,10 @@ import { Step3Shipping } from './steps/Step3Shipping'
 import { Step4Payments } from './steps/Step4Payments'
 import { Step5StatusRemarks } from './steps/Step5StatusRemarks'
 import { Step6Clearance } from './steps/Step6Clearance'
-import { Step7LandedCost } from './steps/Step7LandedCost'
 
 const STEP_COMPONENTS = [
   Step1Consignment, Step2Finance, Step3Shipping, Step4Payments,
-  Step5StatusRemarks, Step6Clearance, Step7LandedCost,
+  Step5StatusRemarks, Step6Clearance,
 ]
 
 /**

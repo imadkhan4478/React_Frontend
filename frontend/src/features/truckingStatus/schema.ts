@@ -23,7 +23,7 @@ export type MovementType = (typeof MOVEMENT_TYPES)[number]
 // Provenance of a trucking job. Derived rows reflect a live source record in
 // logistics / imports-FOB and are never copied; manual rows are fully owned by
 // the trucking operator (follow-up reminders they create themselves).
-export const TRUCKING_SOURCES = ['manual', 'from-logistics', 'from-import-fob'] as const
+export const TRUCKING_SOURCES = ['manual', 'from-logistics', 'from-import-fob', 'from-export'] as const
 export type TruckingSource = (typeof TRUCKING_SOURCES)[number]
 
 export const SHIFTING_TYPES = ['Regular', 'Special', 'Others'] as const
