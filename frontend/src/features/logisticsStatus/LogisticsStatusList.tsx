@@ -15,6 +15,7 @@ import {
   customerList, orderTypeList, statusList,
   type LogisticsOrder, type LogisticsFilters,
 } from '@/lib/logisticsStatusData'
+import { getTruckingReadthrough } from '@/lib/truckingStatusData'
 
 const num = (v: number) => v.toLocaleString('en-US')
 const dateShort = (v?: string) => {
@@ -23,6 +24,25 @@ const dateShort = (v?: string) => {
   if (Number.isNaN(+d)) return '—'
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
   return `${d.getDate()} ${MONTHS[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`
+}
+
+function TruckingHandoffBadge({ order }: { order: LogisticsOrder }) {
+  if (!order.sentToTrucking) {
+    return <span className="text-xs text-muted">Not sent</span>
+  }
+  const readthrough = getTruckingReadthrough(order.systemId)
+  if (!readthrough || !readthrough.taken) {
+    return (
+      <span className="rounded border border-[var(--color-watch)]/30 bg-[var(--color-watch-bg)] px-1.5 py-0.5 text-[11px] text-[var(--color-watch)]">
+        Awaiting pickup
+      </span>
+    )
+  }
+  return (
+    <span className="rounded border border-[var(--color-healthy)]/30 bg-[var(--color-healthy-bg)] px-1.5 py-0.5 text-[11px] text-[var(--color-healthy)]" title={readthrough.trackingRollupLabel}>
+      {readthrough.trackingRollupLabel}
+    </span>
+  )
 }
 
 /**
@@ -34,6 +54,9 @@ const dateShort = (v?: string) => {
  * clearing agent for them; those consignments live in Imports Status, so the
  * request rows link back there and cannot be edited here (the record's home
  * is Imports). Same live-derivation idea Trucking Status uses.
+ *
+ * Transportation is no longer tracked here (see schema.ts) — the "Sent to
+ * Trucking" column reads through to the live Trucking job once handed off.
  */
 export function LogisticsStatusList() {
   const navigate = useNavigate()
@@ -46,18 +69,18 @@ export function LogisticsStatusList() {
 
   const exportCsv = () => {
     const cols = [
-      'System ID', 'Order Type', 'Customer', 'Items', 'Total Quantity', 'Export No(s).',
-      'Origin', 'Destination', 'Status', 'Containers', 'Gate Out Date', 'Actual Delivery Date',
+      'System ID', 'Order Type', 'Customer', 'MO No.', 'Incoterm', 'Items', 'Total Quantity', 'Export No(s).',
+      'Origin', 'Status', 'Containers', 'Gate Out Date', 'Sent to Trucking',
     ]
     const line = (o: LogisticsOrder) => [
-      o.systemId, o.orderType, o.customerName,
+      o.systemId, o.orderType, o.customerName, o.moNo ?? '', o.incoterm ?? '',
       o.items.map((it) => it.itemDetail).join('; '),
       totalQuantity(o.items),
       exportNumbers(o.items).join('; '),
       o.orderType === 'Export' ? o.originCountry : `${o.originCity}, ${o.originProvince}`,
-      o.destination, o.status,
+      o.status,
       o.containers.map((c) => c.containerType).join('; '),
-      o.gateOutDate, o.actualDeliveryDate,
+      o.gateOutDate, o.sentToTrucking ? 'Yes' : 'No',
     ].map((v) => {
       const s = String(v ?? '')
       return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
@@ -91,7 +114,7 @@ export function LogisticsStatusList() {
         search={{
           value: filters.search ?? '',
           onChange: (search) => setFilters((f) => ({ ...f, search })),
-          placeholder: 'ID, customer, item, IDM, export no…',
+          placeholder: 'ID, customer, item, IDM, export no, job no…',
         }}
       >
         <MultiSelectFilter label="Order type" options={orderTypeList} value={filters.orderType ?? []} onChange={(orderType) => setFilters((f) => ({ ...f, orderType: orderType as typeof f.orderType }))} />
@@ -114,11 +137,12 @@ export function LogisticsStatusList() {
                 <th className="px-3 py-2 text-left">ID</th>
                 <th className="px-3 py-2 text-left">Order type</th>
                 <th className="px-3 py-2 text-left">Customer</th>
+                <th className="px-3 py-2 text-left">MO No. / Incoterm</th>
                 <th className="px-3 py-2 text-left">Items</th>
                 <th className="px-3 py-2 text-right">Total qty</th>
                 <th className="px-3 py-2 text-left">Status</th>
                 <th className="px-3 py-2 text-left">Containers</th>
-                <th className="px-3 py-2 text-left">Destination</th>
+                <th className="px-3 py-2 text-left">Sent to Trucking</th>
                 <th className="px-3 py-2 text-right">Gate out</th>
                 <th className="px-3 py-2 text-left"></th>
               </tr>
@@ -137,6 +161,10 @@ export function LogisticsStatusList() {
                     <td className="px-3 py-2 font-semibold tabular-nums">{o.systemId}</td>
                     <td className="px-3 py-2">{o.orderType}</td>
                     <td className="px-3 py-2">{o.customerName}</td>
+                    <td className="px-3 py-2 text-[13px]">
+                      <div className="tabular-nums">{o.moNo || '—'}</div>
+                      <div className="text-muted">{o.incoterm || '—'}</div>
+                    </td>
                     <td className="px-3 py-2">
                       <div>{first?.itemDetail ?? '—'}{more > 0 && <span className="text-muted"> · +{more} more</span>}</div>
                       {o.orderType === 'Export' && (
@@ -156,8 +184,8 @@ export function LogisticsStatusList() {
                           ? o.containers[0].containerType
                           : `${o.containers.length} containers`}
                     </td>
-                    <td className="px-3 py-2 text-[13px] text-muted">
-                      {o.orderType === 'Export' ? o.destination : `${o.originCity}, ${o.originProvince}`}
+                    <td className="px-3 py-2">
+                      <TruckingHandoffBadge order={o} />
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{dateShort(o.gateOutDate)}</td>
                     <td className="px-3 py-2">

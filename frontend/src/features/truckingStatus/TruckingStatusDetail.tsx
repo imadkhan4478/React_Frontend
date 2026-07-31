@@ -48,7 +48,10 @@ export function TruckingStatusDetail() {
   const rate = ratePerKg(row.actualFreight, gross)
   const out = outstanding(row.actualFreight, row.paidAmount)
   const rollup = trackingRollup(row.vehicles)
-  const isDerived = row.source !== 'manual'
+  // A still-open, live-derived request has no takenAt yet; once Take Action
+  // has been clicked the job is independent (source stays for provenance,
+  // but it's no longer re-derived — see findTakenJobBySourceRef).
+  const isDerived = row.source !== 'manual' && !row.takenAt
 
   return (
     <div className="flex flex-col gap-6">
@@ -69,6 +72,13 @@ export function TruckingStatusDetail() {
         <div className="rounded-lg border border-line bg-canvas-alt px-4 py-3 text-sm text-muted">
           This is a live request reflected from {sourceLabel(row.source)}. It updates automatically with
           its source — add vehicles and tracking here once the trucking team takes it on.
+        </div>
+      )}
+
+      {row.takenAt && (
+        <div className="rounded-lg border border-line bg-canvas-alt px-4 py-3 text-sm text-muted">
+          Taken from {sourceLabel(row.source)} order {row.sourceRef} on {new Date(row.takenAt).toLocaleString()}.
+          This job is now independent — it no longer updates from its source.
         </div>
       )}
 

@@ -13,13 +13,13 @@ import { consignmentDraftSchema, DRAFT_DEFAULT_VALUES, WIZARD_STEPS, type Logist
 import { WizardStepper } from './WizardStepper'
 import { UnsavedChangesDialog } from './UnsavedChangesDialog'
 import { Step1Order } from './steps/Step1Order'
-import { Step2Transportation } from './steps/Step2Transportation'
+import { Step2Packing } from './steps/Step2Packing'
 import { Step3Shipping } from './steps/Step3Shipping'
 import { Step4Expenditures } from './steps/Step4Expenditures'
 import { Step5Status } from './steps/Step5Status'
 
 const STEP_COMPONENTS = [
-  Step1Order, Step2Transportation, Step3Shipping, Step4Expenditures, Step5Status,
+  Step1Order, Step2Packing, Step3Shipping, Step4Expenditures, Step5Status,
 ]
 
 /** See the matching function in features/importsStatus/wizard/
@@ -116,7 +116,10 @@ export function LogisticsStatusWizard() {
       // `.default()` are optional there); updateLogisticsOrder wants the
       // OUTPUT type. Safe to cast — those defaulted fields are always
       // populated once the form has mounted with defaultValues.
-      updateLogisticsOrder(id, values as LogisticsDraft)
+      // changedBy is threaded through so updateLogisticsOrder can log an RFD
+      // audit event under the right name — see the comment there for why the
+      // previous-value comparison has to happen in that function, not here.
+      updateLogisticsOrder(id, values as LogisticsDraft, user?.name ?? 'Unknown')
       // React Router keeps this component mounted across step navigation
       // (only the `:step` param changes, not the route element) — so the
       // dirty baseline has to move forward explicitly, or the guard fires
@@ -146,8 +149,12 @@ export function LogisticsStatusWizard() {
   }
 
   function onSubmit(data: LogisticsDraft) {
-    // Placeholder: wire up to the real API once it exists.
-    console.log('submit logistics draft', data)
+    // Edit mode: Submit is how the LAST step's edits get saved (there's no
+    // further Next to trigger the unsaved-changes dialog) — without this,
+    // e.g. checking "Send to Trucking" on Step 5 and clicking Submit would
+    // silently discard it. New-record creation still has no backing API.
+    if (id) updateLogisticsOrder(id, data, user?.name ?? 'Unknown')
+    else console.log('submit logistics draft', data) // placeholder until create API exists
     navigate(id ? `/logistics-status/${id}` : '/logistics-status')
   }
 

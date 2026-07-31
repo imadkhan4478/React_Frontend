@@ -1,11 +1,18 @@
 import {
   ORDER_TYPES,
+  INCOTERMS,
+  PACKING_STATUSES,
   statusesFor,
+  recordRfdChange,
   type LogisticsDraft,
   type LogisticsItem,
   type LogisticsContainer,
+  type LogisticsPackage,
+  type RfdChangeEvent,
+  type RemarkEntry,
   type OrderType,
 } from '@/features/logisticsStatus/schema'
+import { QG_FACTORIES } from '@/features/truckingStatus/schema'
 // Cross-module: FOB imports need Logistics to arrange the sea freight and
 // clearing agent, so they surface here as read-only open requests — the
 // mirror of what Trucking does for the same consignments (see
@@ -56,75 +63,160 @@ const CITIES: Record<string, string> = {
   Punjab: 'Lahore', Sindh: 'Karachi', 'Khyber Pakhtunkhwa': 'Peshawar',
 }
 const PROVINCES = ['Punjab', 'Sindh', 'Khyber Pakhtunkhwa'] as const
-const TRANSPORTERS = ['Bilal Goods Transport', 'Al-Hamd Logistics', 'Sindh Cargo Movers'] as const
-const VEHICLE_TYPES = ['20ft container truck', '40ft container truck', 'Flatbed'] as const
 const SHIPPING_LINES = ['Maersk', 'MSC', 'CMA CGM', 'Hapag-Lloyd'] as const
 const CONTAINER_TYPES = ["20' Dry", "40' Dry", "40' High Cube"] as const
 const CLEARING_AGENTS = ['Prime Cargo Services', 'Indus Clearing Co.', 'Sea Link Logistics'] as const
 const DESTINATIONS = ['Jebel Ali, UAE', 'Hamburg, Germany', 'Felixstowe, UK', 'Mersin, Türkiye', 'Yokohama, Japan'] as const
+const STAFF = ['Usman Tariq', 'Ayesha Khan', 'Bilal Ahmed', 'Hina Farooq'] as const
+const REMARK_TEXTS = [
+  'Customer confirmed final artwork.',
+  'Awaiting fabric dyeing lot approval.',
+  'Packing schedule moved up a week.',
+  'Container booking confirmed with shipping line.',
+  'Buyer requested revised carton markings.',
+] as const
 
 export interface LogisticsOrder extends LogisticsDraft {
   systemId: string
 }
 
+/** ~40% of items get a seeded RFD change so the audit trail has something to
+ *  show out of the box, without needing to edit a record first. */
+function makeRfdHistory(itemKey: string): RfdChangeEvent[] {
+  if (rng() > 0.4) return []
+  const count = randInt(1, 2)
+  const events: RfdChangeEvent[] = []
+  let prev: string | undefined
+  let cursor = addDays('2026-03-01', randInt(0, 60))
+  for (let e = 0; e < count; e++) {
+    const newValue = addDays(cursor, randInt(3, 15))
+    events.push({
+      id: `rfd-seed-${itemKey}-${e}`,
+      field: 'plannedRfdDate',
+      previousValue: prev,
+      newValue,
+      changedBy: pick(STAFF),
+      changedAt: `${cursor}T09:00:00.000Z`,
+      remark: rng() > 0.6 ? 'Adjusted per factory update.' : undefined,
+    })
+    prev = newValue
+    cursor = newValue
+  }
+  return events
+}
+
+function makeItems(orderKey: string, orderType: OrderType): LogisticsItem[] {
+  const isExport = orderType === 'Export'
+  const lineCount = randInt(1, 3)
+  return Array.from({ length: lineCount }, (_, n) => {
+    const unitWeight = randInt(2, 40)
+    const itemKey = `${orderKey}-${n}`
+    return {
+      id: `item-${itemKey}`,
+      jobNo: rng() > 0.2 ? `JOB-${randInt(1000, 9999)}` : '',
+      itemDetail: pick(CATALOGUE),
+      quantity: randInt(50, 5000),
+      unitWeight,
+      grossWeight: randInt(200, 18000),
+      idm: `IDM-${randInt(1000, 9999)}`,
+      exportNo: isExport ? `EXP-${randInt(1000, 9999)}` : '',
+      batchNo: rng() > 0.4 ? `B-${randInt(100, 999)}` : '',
+      plannedRfdDate: rng() > 0.15 ? addDays('2026-04-01', randInt(0, 90)) : '',
+      actualRfdDate: rng() > 0.5 ? addDays('2026-04-10', randInt(0, 95)) : '',
+      rfdHistory: makeRfdHistory(itemKey),
+    }
+  })
+}
+
+/** 1-3 packages per order, each carrying a partial allocation of the order's
+ *  items — roughly half of every item's quantity ends up fully allocated,
+ *  half left with a real outstanding remainder, so the Packing step's
+ *  outstanding-quantity summary has genuine examples of both. */
+function makePackages(orderKey: string, items: LogisticsItem[], stageIndex: number): LogisticsPackage[] {
+  if (stageIndex < 1 && rng() > 0.3) return [] // early-stage orders often have none yet
+  const count = randInt(1, 3)
+  const packages: LogisticsPackage[] = Array.from({ length: count }, (_, p) => ({
+    id: `package-${orderKey}-${p}`,
+    colourCode: rng() > 0.4 ? pick(['Red', 'Blue', 'Grey', 'Natural']) : '',
+    packingWorks: pick(QG_FACTORIES),
+    packingReadyDate: addDays('2026-04-01', randInt(0, 60)),
+    packingDate: stageIndex >= 1 && rng() > 0.3 ? addDays('2026-04-05', randInt(0, 65)) : '',
+    quotedPackingCost: randInt(2_000, 9_000),
+    actualPackingCost: stageIndex >= 1 && rng() > 0.3 ? randInt(1_800, 9_500) : undefined,
+    grossWeight: randInt(500, 8_000),
+    status: pick(PACKING_STATUSES),
+    allocations: [],
+  }))
+
+  items.forEach((item) => {
+    if (item.quantity === undefined || item.quantity <= 0) return
+    const fullyAllocate = rng() > 0.5
+    let remaining = item.quantity
+    const nTargets = randInt(1, Math.min(2, packages.length))
+    const targets = [...packages].sort(() => rng() - 0.5).slice(0, nTargets)
+    targets.forEach((pkg, idx) => {
+      if (remaining <= 0) return
+      const isLast = idx === targets.length - 1
+      const portion = Math.min(
+        remaining,
+        isLast && fullyAllocate ? remaining : Math.max(1, Math.floor(remaining * (0.3 + rng() * 0.3))),
+      )
+      pkg.allocations.push({ id: `alloc-${pkg.id}-${item.id}`, itemId: item.id, quantity: portion })
+      remaining -= portion
+    })
+  })
+
+  return packages
+}
+
+function makeRemarksLog(orderKey: string): RemarkEntry[] {
+  if (rng() > 0.5) return []
+  const count = randInt(1, 2)
+  return Array.from({ length: count }, (_, r) => ({
+    id: `remark-seed-${orderKey}-${r}`,
+    text: pick(REMARK_TEXTS),
+    authoredBy: pick(STAFF),
+    authoredAt: `${addDays('2026-04-01', randInt(0, 90))}T10:30:00.000Z`,
+    system: false,
+  }))
+}
+
 function makeOrder(i: number): LogisticsOrder {
+  const orderKey = String(240 - i)
   const orderType: OrderType = pick(ORDER_TYPES)
   const isExport = orderType === 'Export'
   const statuses = statusesFor(orderType)
   const status = pick(statuses)
   const stageIndex = statuses.indexOf(status)
 
-  // 1-3 items per order. Export numbers are independent per line — some
-  // orders share one filing across every item, others don't, matching how
-  // this is actually booked.
-  const lineCount = randInt(1, 3)
-  const items: LogisticsItem[] = Array.from({ length: lineCount }, (_, n) => {
-    const netWeight = randInt(200, 18000)
-    return {
-      id: `item-${240 - i}-${n}`,
-      itemDetail: pick(CATALOGUE),
-      quantity: randInt(50, 5000),
-      netWeight,
-      grossWeight: netWeight + randInt(20, 400),
-      idm: `IDM-${randInt(1000, 9999)}`,
-      exportNo: isExport ? `EXP-${randInt(1000, 9999)}` : '',
-      batchNo: rng() > 0.4 ? `B-${randInt(100, 999)}` : '',
-    }
-  })
+  const items = makeItems(orderKey, orderType)
+  const packages = makePackages(orderKey, items, stageIndex)
 
-  const hasTransport = stageIndex >= 2
-  const dispatchNoteDate = hasTransport ? addDays('2026-04-01', randInt(20, 100)) : ''
-  const gateOutDate = hasTransport ? addDays(dispatchNoteDate, randInt(0, 3)) : ''
-  const actualDeliveryDate = stageIndex >= statuses.length - 1 ? addDays(gateOutDate || '2026-05-01', randInt(3, 20)) : ''
+  const hasProgressed = stageIndex >= 2
+  const gateOutDate = hasProgressed ? addDays('2026-04-01', randInt(20, 100)) : ''
 
   const province = pick(PROVINCES)
   const hasContainers = isExport && stageIndex >= 3
   const containers: LogisticsContainer[] = hasContainers
     ? Array.from({ length: randInt(1, 4) }, (_, n) => ({
-        id: `container-${240 - i}-${n}`,
+        id: `container-${orderKey}-${n}`,
         containerType: pick(CONTAINER_TYPES),
         containerNo: rng() > 0.3 ? `MSKU${randInt(1000000, 9999999)}` : '',
       }))
     : []
 
   return {
-    systemId: `LOG-2026-${String(240 - i).padStart(4, '0')}`,
+    systemId: `LOG-2026-${orderKey.padStart(4, '0')}`,
     orderType,
     originCountry: isExport ? pick(COUNTRIES) : '',
     originCity: isExport ? '' : CITIES[province],
     originProvince: isExport ? '' : province,
     customerName: pick(CUSTOMERS),
+    moNo: rng() > 0.3 ? `MO-2026-${randInt(1000, 9999)}` : '',
+    incoterm: rng() > 0.4 ? pick(INCOTERMS) : undefined,
     items,
 
-    transporterName: hasTransport ? pick(TRANSPORTERS) : '',
-    vehicleType: hasTransport ? pick(VEHICLE_TYPES) : '',
-    gateOutDate,
-    dispatchNoteDate,
-    quotedFreight: hasTransport ? randInt(15_000, 90_000) : 0,
-    actualFreight: hasTransport ? randInt(15_000, 95_000) : 0,
-    actualDeliveryDate,
-    originFactory: rng() > 0.3 ? 'Unit 2 — Manga Mandi' : '',
-    destination: isExport ? pick(DESTINATIONS) : 'Local delivery',
+    packages,
 
     containers,
     pol: isExport && stageIndex >= 3 ? 'Port Qasim, Karachi' : '',
@@ -151,7 +243,12 @@ function makeOrder(i: number): LogisticsOrder {
     seaAirFreight: isExport ? randInt(40_000, 220_000) : 0,
 
     status,
-    remarks: '',
+    remarksLog: makeRemarksLog(orderKey),
+    gateOutDate,
+    // ~60% of orders that have progressed past the early stages have already
+    // been handed to Trucking, so Trucking Status's from-logistics feed has
+    // real rows to show without the user first checking the box themselves.
+    sentToTrucking: hasProgressed && rng() > 0.4,
   }
 }
 
@@ -175,8 +272,8 @@ export function getLogisticsOrders(f: LogisticsFilters = {}): LogisticsOrder[] {
     if (f.customer?.length && !f.customer.includes(o.customerName)) return false
     if (q) {
       const hay = [
-        o.systemId, o.customerName,
-        ...o.items.map((it) => `${it.itemDetail} ${it.idm} ${it.exportNo}`),
+        o.systemId, o.customerName, o.moNo ?? '',
+        ...o.items.map((it) => `${it.itemDetail} ${it.idm} ${it.exportNo} ${it.jobNo}`),
       ].join(' ').toLowerCase()
       if (!hay.includes(q)) return false
     }
@@ -187,14 +284,38 @@ export function getLogisticsOrders(f: LogisticsFilters = {}): LogisticsOrder[] {
 export const getLogisticsOrder = (systemId: string): LogisticsOrder | undefined =>
   ALL.find((o) => o.systemId === systemId)
 
-/** Mutates the in-memory mock store — same convention as updateConsignment
- *  in lib/importsStatusData.ts. Unlike Imports Status, `LogisticsDraft` is
- *  already the full record shape, so this is a straight replace, no
- *  overlapping-fields bridge needed. */
-export function updateLogisticsOrder(systemId: string, data: LogisticsDraft): void {
+/**
+ * Mutates the in-memory mock store — same convention as updateConsignment in
+ * lib/importsStatusData.ts.
+ *
+ * RFD-CHANGE AUDIT: `plannedRfdDate`/`actualRfdDate` can be edited on Step 1,
+ * and every change has to be logged (recordRfdChange). The comparison has to
+ * happen HERE, against the record still sitting in `ALL`, because that is
+ * the only place the field's true PREVIOUS value is still known — by the
+ * time a step component sees `data`, react-hook-form has already applied the
+ * user's edit, so the old value is gone from the form's own state. Matched
+ * by item id (not index), so a newly-added item this session (no prior
+ * record to diff against) is left alone.
+ */
+export function updateLogisticsOrder(systemId: string, data: LogisticsDraft, changedBy: string): void {
   const idx = ALL.findIndex((o) => o.systemId === systemId)
   if (idx === -1) return
-  ALL[idx] = { ...data, systemId }
+  const existing = ALL[idx]
+
+  const items = data.items.map((item) => {
+    const prev = existing.items.find((p) => p.id === item.id)
+    if (!prev) return item
+    let history = prev.rfdHistory
+    if (prev.plannedRfdDate !== (item.plannedRfdDate ?? '')) {
+      history = recordRfdChange({ ...prev, rfdHistory: history }, 'plannedRfdDate', item.plannedRfdDate ?? '', changedBy).rfdHistory
+    }
+    if (prev.actualRfdDate !== (item.actualRfdDate ?? '')) {
+      history = recordRfdChange({ ...prev, rfdHistory: history }, 'actualRfdDate', item.actualRfdDate ?? '', changedBy).rfdHistory
+    }
+    return { ...item, rfdHistory: history }
+  })
+
+  ALL[idx] = { ...data, items, systemId }
 }
 
 /**

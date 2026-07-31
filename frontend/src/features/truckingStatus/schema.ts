@@ -50,6 +50,22 @@ export type VehicleTrackingStatus = (typeof VEHICLE_TRACKING_STATUSES)[number]
 export const BUILTY_STATUSES = ['Yes', 'NA'] as const
 
 // --- Per-vehicle line ------------------------------------------------------
+
+/**
+ * Which Logistics packages (by id, from the source order's packages[]) are
+ * riding on this vehicle. Confirmed design: Trucking sees a `from-logistics`
+ * job PACKAGE-WISE, not as one undifferentiated blob — a package might fill a
+ * whole vehicle on its own, or several small packages might share one truck,
+ * so this is an allocation, the same many-to-many shape as Logistics' own
+ * item–package allocation, one level up the chain. Empty for manual jobs and
+ * for movement types with no package concept (e.g. plain Intrafactory moves
+ * of loose goods) — purely additive, never required.
+ */
+export const vehiclePackageRefSchema = z.object({
+  packageId: z.string(), // LogisticsPackage.id from the source order
+})
+export type VehiclePackageRef = z.infer<typeof vehiclePackageRefSchema>
+
 export const vehicleSchema = z.object({
   vehicleNumber: z.string().optional(),
   vehicleType: z.string().optional(),
@@ -62,6 +78,9 @@ export const vehicleSchema = z.object({
   containerType: z.string().optional(),
   trackingStatus: z.enum(VEHICLE_TRACKING_STATUSES).optional(),
   builtyStatus: z.enum(BUILTY_STATUSES).optional(),
+  /** Package-wise allocation for jobs taken from a Logistics order. See
+   *  vehiclePackageRefSchema above. */
+  packageRefs: z.array(vehiclePackageRefSchema).default([]),
 })
 export type Vehicle = z.infer<typeof vehicleSchema>
 
@@ -77,8 +96,29 @@ export function emptyVehicle(): Vehicle {
     containerType: '',
     trackingStatus: 'Going to load',
     builtyStatus: 'NA',
+    packageRefs: [],
   }
 }
+
+/**
+ * One item/package snapshot taken from the source record at the moment
+ * "Take Action" is pressed. Confirmed design: Take Action is a REAL accept
+ * step — the resulting job becomes an independent, editable TruckingDraft,
+ * disconnected from further live updates to its source (this reverses the
+ * earlier "always live-linked, no accept" answer for the specific case of a
+ * job someone has actively taken on; jobs nobody has taken yet remain the
+ * live, never-copied open-request rows exactly as before). This snapshot is
+ * what pre-fills the "New Trucking Job" form so the operator only has to
+ * fill in the trucking-specific remainder, never re-key what's already known.
+ */
+export const takenSourceSnapshotSchema = z.object({
+  sourcePackageId: z.string().optional(), // LogisticsPackage.id, if package-wise
+  label: z.string(), // human-readable summary shown while filling the form
+  itemDetails: z.string().optional(),
+  quantity: z.number().optional(),
+  weight: z.number().optional(),
+})
+export type TakenSourceSnapshot = z.infer<typeof takenSourceSnapshotSchema>
 
 // --- Step 1: Movement + Item ----------------------------------------------
 export const movementSchema = z.object({
@@ -89,6 +129,20 @@ export const movementSchema = z.object({
   // via z.infer), which zodResolver<schema> vs useForm<TruckingDraft> then
   // reject as incompatible Resolver types.
   source: z.enum(TRUCKING_SOURCES),
+  /** Set only when this job originated from a Take Action on an open
+   *  request. Once set, the job is fully independent — later changes to the
+   *  original Logistics/Imports record do NOT flow through; this is a point-
+   *  in-time snapshot reference kept for traceability only ("taken from
+   *  order X"), never a live pointer. */
+  sourceRef: z.string().optional(),
+  /** ISO datetime the operator clicked Take Action — undefined for jobs
+   *  created directly via "New Trucking Job" (source: 'manual') and for
+   *  still-open, not-yet-taken derived rows (which never reach the wizard
+   *  at all — see truckingStatusData.ts). */
+  takenAt: z.string().optional(),
+  /** Snapshot of the source's items/packages at the moment of taking, used
+   *  only to pre-fill the form — not re-read live afterward. */
+  takenSnapshot: z.array(takenSourceSnapshotSchema).default([]),
   executionDate: z.string().optional(), // ISO yyyy-mm-dd
   transporterName: z.string().optional(),
   shiftingType: z.enum(SHIFTING_TYPES).optional(),
@@ -168,6 +222,9 @@ export const truckingSubmitSchema = truckingDraftSchema.superRefine((val, ctx) =
 export const DRAFT_DEFAULT_VALUES: TruckingDraft = {
   movementType: 'Outbound',
   source: 'manual',
+  sourceRef: undefined,
+  takenAt: undefined,
+  takenSnapshot: [],
   executionDate: '',
   transporterName: '',
   shiftingType: 'Regular',
@@ -243,6 +300,24 @@ export function vehicleCount(vehicles?: Vehicle[]): number {
 export function outstanding(actualFreight?: number, paidAmount?: number): number | null {
   if (actualFreight == null) return null
   return actualFreight - (paidAmount ?? 0)
+}
+
+/** Which vehicle (index) a given package id is riding on, if any — package→
+ *  vehicle is intentionally not required to be 1:1 (a package may fill a
+ *  whole vehicle, or ride alongside others), but each package should only be
+ *  assigned once; this reports the first match. */
+export function vehicleIndexForPackage(vehicles: Vehicle[], packageId: string): number | null {
+  const idx = vehicles.findIndex((v) => v.packageRefs?.some((r) => r.packageId === packageId))
+  return idx === -1 ? null : idx
+}
+
+/** Every package id already assigned to some vehicle, across the whole job —
+ *  used to compute which of the taken snapshot's packages are still
+ *  unassigned to any vehicle. */
+export function assignedPackageIds(vehicles: Vehicle[]): Set<string> {
+  const out = new Set<string>()
+  for (const v of vehicles) for (const r of v.packageRefs ?? []) out.add(r.packageId)
+  return out
 }
 
 /**

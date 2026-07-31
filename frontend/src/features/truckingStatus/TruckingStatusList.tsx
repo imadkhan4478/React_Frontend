@@ -14,6 +14,7 @@ import {
   rollupLabel,
   rowGrossWeight,
   sourceLabel,
+  takeAction,
   type TruckingRow,
 } from '@/lib/truckingStatusData'
 
@@ -37,7 +38,13 @@ export function TruckingStatusList() {
   const [movementFilter, setMovementFilter] = useState<string[]>([])
   const [sourceFilter, setSourceFilter] = useState<string[]>([])
   const [openOnly, setOpenOnly] = useState(false)
+  // Distinct from "Open requests only": openOnly covers every job not yet
+  // fully delivered (manual jobs included), while this is specifically the
+  // still-live, not-yet-taken derived requests (source !== 'manual') — a
+  // manual job in progress is "open" but was never a "pending request".
+  const [pendingOnly, setPendingOnly] = useState(false)
   const [search, setSearch] = useState('')
+  const [takingId, setTakingId] = useState<string | null>(null)
 
   const rows = useMemo(
     () =>
@@ -50,11 +57,24 @@ export function TruckingStatusList() {
     [movementFilter, sourceFilter, openOnly, search],
   )
 
+  const pendingFiltered = useMemo(
+    () => (pendingOnly ? rows.filter((r) => r.source !== 'manual') : rows),
+    [rows, pendingOnly],
+  )
+
   // Open requests first, then by id.
   const sorted = useMemo(
-    () => [...rows].sort((a, b) => Number(!!b.open) - Number(!!a.open) || a.systemId.localeCompare(b.systemId)),
-    [rows],
+    () => [...pendingFiltered].sort((a, b) => Number(!!b.open) - Number(!!a.open) || a.systemId.localeCompare(b.systemId)),
+    [pendingFiltered],
   )
+
+  function handleTakeAction(r: TruckingRow) {
+    if (r.source !== 'from-logistics' && r.source !== 'from-import-fob') return
+    if (!r.sourceRef) return
+    setTakingId(r.systemId)
+    const newId = takeAction(r.source, r.sourceRef)
+    navigate(`/trucking-status/${newId}/edit/1`)
+  }
 
   function exportCsv() {
     const header = [
@@ -123,6 +143,10 @@ export function TruckingStatusList() {
           <input type="checkbox" checked={openOnly} onChange={(e) => setOpenOnly(e.target.checked)} />
           Open requests only
         </label>
+        <label className="flex items-center gap-2 text-sm text-ink">
+          <input type="checkbox" checked={pendingOnly} onChange={(e) => setPendingOnly(e.target.checked)} />
+          Pending requests only
+        </label>
       </FilterBar>
 
       <div className="overflow-x-auto rounded-xl border border-line">
@@ -137,6 +161,7 @@ export function TruckingStatusList() {
               <th className="px-3 py-2">Vehicles</th>
               <th className="px-3 py-2">Tracking</th>
               <th className="px-3 py-2">Payment</th>
+              <th className="px-3 py-2"></th>
             </tr>
           </thead>
           <tbody>
@@ -163,11 +188,22 @@ export function TruckingStatusList() {
                   {vehicleCount(r.vehicles) ? <StatusBadge label={rollupLabel(r)} /> : <span className="text-muted">awaiting vehicles</span>}
                 </td>
                 <td className="px-3 py-2">{r.paymentStatus ?? '—'}</td>
+                <td className="px-3 py-2">
+                  {r.open && (r.source === 'from-logistics' || r.source === 'from-import-fob') && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleTakeAction(r) }}
+                      disabled={takingId === r.systemId}
+                      className="rounded border border-line px-2.5 py-1 text-[11px] hover:border-brand hover:text-brand disabled:opacity-50"
+                    >
+                      Take Action
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-3 py-8 text-center text-muted">
+                <td colSpan={9} className="px-3 py-8 text-center text-muted">
                   No trucking jobs match these filters.
                 </td>
               </tr>
