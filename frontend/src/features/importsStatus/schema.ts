@@ -300,6 +300,8 @@ export const clearanceStepSchema = z.object({
   gateOutDate: optionalDate,
   /** PKR. Carried into actual landed cost. */
   demurrageCost: optionalNumber,
+  /** PKR. Container detention — separate from port demurrage. */
+  containerDetention: optionalNumber,
 })
 
 /* ------------------------------------------------------------------ */
@@ -419,7 +421,7 @@ export const DRAFT_DEFAULT_VALUES: ConsignmentDraft = {
   status: '', statusHistory: [], systemRemarks: '', userRemarks: '',
 
   clearingAgent: '', gdNumber: '', gdDate: '',
-  freeDays: undefined, gateOutDate: '', demurrageCost: undefined,
+  freeDays: undefined, gateOutDate: '', demurrageCost: undefined, containerDetention: undefined,
 
   recordState: DRAFT,
   isDeleted: false,
@@ -454,7 +456,7 @@ export const WIZARD_STEPS: WizardStepDef[] = [
   { step: 5, key: 'status-remarks', label: 'Status & Remarks',
     fields: ['status', 'userRemarks'] },
   { step: 6, key: 'clearance', label: 'Clearance',
-    fields: ['clearingAgent', 'gdNumber', 'gdDate', 'freeDays', 'gateOutDate', 'demurrageCost'], optionalModule: true },
+    fields: ['clearingAgent', 'gdNumber', 'gdDate', 'freeDays', 'gateOutDate', 'demurrageCost', 'containerDetention'], optionalModule: true },
 ]
 
 export const stepByKey = (key: string) => WIZARD_STEPS.find((s) => s.key === key)

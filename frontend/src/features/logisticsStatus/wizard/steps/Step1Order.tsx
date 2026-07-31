@@ -2,7 +2,7 @@ import { useFormContext, useFieldArray, useWatch } from 'react-hook-form'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import {
-  ORDER_TYPES, INCOTERMS, emptyItem, itemPendingFields, itemNetWeight,
+  ORDER_TYPES, DEPARTMENTS, INCOTERMS, emptyItem, itemPendingFields, itemNetWeight, batchDisplayLabel,
   type LogisticsDraft, type LogisticsItem,
 } from '../../schema'
 
@@ -27,10 +27,18 @@ function DerivedField({ label, value, derivation }: { label: string; value: stri
 /**
  * Step 1 — Order details.
  *
- * Order-level fields (type, origin, customer, MO no., incoterm) apply to the
- * whole order. Job#, item detail, quantity, unit weight, gross weight, IDM,
- * export no., batch no. and the Planned/Actual RFD dates are per item — an
+ * Order-level fields (department, type, origin, customer, MO no., batch,
+ * incoterm) apply to the whole order. Job#, item detail, quantity, unit
+ * weight, gross weight, and the Planned/Actual RFD dates are per item — an
  * order can bundle several items, each running its own production timeline.
+ *
+ * Items are simplified from the previous design: no IDM, export number, or
+ * batch number on the item line — those concepts moved to (or were replaced
+ * by) the order-level MO/batch system.
+ *
+ * Batch No. is auto-assigned (Batch 1, 2, ... per MO number, see
+ * lib/logisticsStatusData.ts's nextBatchNoForMo) and shown here read-only;
+ * only its display label is user-editable.
  *
  * Net weight is DERIVED (quantity × unit weight, via itemNetWeight() in
  * schema.ts) — shown read-only, never typed in directly.
@@ -42,10 +50,11 @@ function DerivedField({ label, value, derivation }: { label: string; value: stri
  */
 export function Step1Order() {
   const { register, control, watch, formState: { errors } } = useFormContext<LogisticsDraft>()
-  // Single rules driver for the screen — origin shape and each item's export
-  // no. field both key off this, so nothing branches on a string literal.
+  // Single rules driver for the screen — origin shape keys off this.
   const orderType = useWatch({ control, name: 'orderType' })
   const isExport = orderType === 'Export'
+  const batchNo = useWatch({ control, name: 'batchNo' })
+  const batchLabel = useWatch({ control, name: 'batchLabel' })
 
   const { fields, append, remove } = useFieldArray({ control, name: 'items' })
   const items = watch('items')
@@ -66,6 +75,16 @@ export function Step1Order() {
               ))}
             </select>
             {errors.orderType && <p className="text-xs text-risk">{errors.orderType.message}</p>}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="department">Department</Label>
+            <select id="department" className={selectClass} {...register('department')}>
+              {DEPARTMENTS.map((d) => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
+            {errors.department && <p className="text-xs text-risk">{errors.department.message}</p>}
           </div>
 
           {/* Origin: country for exports; city + province for local. */}
@@ -99,6 +118,25 @@ export function Step1Order() {
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="moNo">MO No. <span className="font-normal text-muted">(optional)</span></Label>
             <Input id="moNo" placeholder="Marketing/Manufacturing Order no." {...register('moNo')} />
+            <p className="text-xs text-muted">
+              Entering an MO that already exists auto-creates this order as the next batch under it.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label>Batch</Label>
+            <div className="flex items-center gap-2">
+              <div className="flex h-10 shrink-0 items-center rounded-lg border border-line bg-canvas-alt px-3 text-sm tabular-nums text-muted">
+                {batchDisplayLabel(batchNo ?? 1)}
+              </div>
+              <Input
+                placeholder={`Batch ${batchNo ?? 1}`}
+                {...register('batchLabel')}
+              />
+            </div>
+            <p className="text-xs text-muted">
+              Batch number is auto-assigned per MO; the label {batchLabel ? '(shown above)' : ''} is renameable.
+            </p>
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -116,13 +154,13 @@ export function Step1Order() {
       {/* items */}
       <section className="rounded-xl border border-line bg-surface">
         <h3 className="border-b border-line px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted">
-          Items — {isExport ? 'each item can carry its own export number' : 'quantity and weight are per item'}
+          Items — quantity and weight are per item
         </h3>
 
         <div className="space-y-3 p-4">
           {fields.map((f, i) => {
             const item = items?.[i] as LogisticsItem | undefined
-            const pending = item ? itemPendingFields(item, orderType) : []
+            const pending = item ? itemPendingFields(item) : []
             const netWeight = item ? itemNetWeight(item) : 0
             return (
               <div key={f.id} className="rounded-lg border border-line bg-canvas-alt/40">
@@ -174,29 +212,6 @@ export function Step1Order() {
                   <div className="flex flex-col gap-1.5">
                     <Label htmlFor={`items.${i}.grossWeight`}>Gross Weight (kg)</Label>
                     <Input id={`items.${i}.grossWeight`} type="number" step="0.01" {...register(`items.${i}.grossWeight`)} />
-                  </div>
-
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor={`items.${i}.idm`}>IDM</Label>
-                    <Input id={`items.${i}.idm`} {...register(`items.${i}.idm`)} />
-                    {errors.items?.[i]?.idm && <p className="text-xs text-risk">{errors.items[i]?.idm?.message}</p>}
-                  </div>
-
-                  {isExport && (
-                    <div className="flex flex-col gap-1.5">
-                      <Label htmlFor={`items.${i}.exportNo`}>
-                        Export No. <span className="font-normal text-muted">(can differ per item)</span>
-                      </Label>
-                      <Input id={`items.${i}.exportNo`} {...register(`items.${i}.exportNo`)} />
-                      {errors.items?.[i]?.exportNo && <p className="text-xs text-risk">{errors.items[i]?.exportNo?.message}</p>}
-                    </div>
-                  )}
-
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor={`items.${i}.batchNo`}>
-                      Batch No. <span className="font-normal text-muted">(optional)</span>
-                    </Label>
-                    <Input id={`items.${i}.batchNo`} {...register(`items.${i}.batchNo`)} />
                   </div>
 
                   <div className="flex flex-col gap-1.5">

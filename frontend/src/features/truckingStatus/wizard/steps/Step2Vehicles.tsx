@@ -3,10 +3,10 @@ import { Plus, Trash2 } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { getImportConsignmentOptions } from '@/lib/truckingStatusData'
 import {
   CONTAINER_TYPES,
   VEHICLE_TRACKING_STATUSES,
-  BUILTY_STATUSES,
   emptyVehicle,
   usesContainers,
   totalGrossWeight,
@@ -15,6 +15,7 @@ import {
   type TruckingDraft,
   type Vehicle,
   type VehiclePackageRef,
+  type VehicleImportRef,
 } from '../../schema'
 
 const selectClass =
@@ -81,12 +82,62 @@ function PackageAllocation({
   )
 }
 
+/**
+ * Import-consignment checklist for one vehicle — two or more import
+ * shipments can legitimately ride the same truck, so this is a many-to-many
+ * checklist, the same shape as the package allocation above. Only shown for
+ * Inbound movements (the same condition that shows the container fields),
+ * since that's the only movement type import consignments apply to.
+ */
+function ImportConsignmentAllocation({
+  vehicleIndex, vehicles, setValue,
+}: {
+  vehicleIndex: number
+  vehicles: Vehicle[]
+  setValue: (name: `vehicles.${number}.importConsignmentRefs`, value: VehicleImportRef[], opts?: { shouldDirty?: boolean }) => void
+}) {
+  const options = getImportConsignmentOptions()
+  if (options.length === 0) return null
+
+  const thisVehicle = vehicles[vehicleIndex]
+  const refs = thisVehicle?.importConsignmentRefs ?? []
+
+  function toggle(consignmentId: string, checked: boolean) {
+    const next = checked
+      ? [...refs, { consignmentId }]
+      : refs.filter((r) => r.consignmentId !== consignmentId)
+    setValue(`vehicles.${vehicleIndex}.importConsignmentRefs`, next, { shouldDirty: true })
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border border-line bg-canvas-alt/40 p-3 sm:col-span-2 lg:col-span-3">
+      <Label>Import consignments on this vehicle</Label>
+      <div className="mt-1.5 flex flex-col gap-1.5">
+        {options.map((o) => {
+          const checked = refs.some((r) => r.consignmentId === o.systemId)
+          return (
+            <label key={o.systemId} className="flex items-center gap-2 text-sm text-ink">
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={(e) => toggle(o.systemId, e.target.checked)}
+              />
+              {o.label}
+            </label>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export function Step2Vehicles() {
   const { register, control, setValue } = useFormContext<TruckingDraft>()
   const { fields, append, remove } = useFieldArray({ control, name: 'vehicles' })
 
   const movementType = useWatch({ control, name: 'movementType' })
   const showContainers = usesContainers(movementType)
+  const isInbound = movementType === 'Inbound'
 
   // Live values for the system-generated summary at the bottom.
   const vehicles = useWatch({ control, name: 'vehicles' })
@@ -179,16 +230,8 @@ export function Step2Vehicles() {
               </select>
             </div>
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`vehicles.${i}.builtyStatus`}>Builty Status</Label>
-              <select id={`vehicles.${i}.builtyStatus`} className={selectClass} {...register(`vehicles.${i}.builtyStatus`)}>
-                {BUILTY_STATUSES.map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-            </div>
-
             <PackageAllocation vehicleIndex={i} vehicles={vehicles ?? []} setValue={setValue} />
+            {isInbound && <ImportConsignmentAllocation vehicleIndex={i} vehicles={vehicles ?? []} setValue={setValue} />}
           </div>
         </div>
       ))}
@@ -210,7 +253,6 @@ export function Step2Vehicles() {
                 <th className="py-1 pr-3">Packages</th>
                 <th className="py-1 pr-3">Gross (kg)</th>
                 <th className="py-1 pr-3">Tracking</th>
-                <th className="py-1 pr-3">Builty</th>
               </tr>
             </thead>
             <tbody className="text-ink">
@@ -221,7 +263,6 @@ export function Step2Vehicles() {
                   <td className="py-1 pr-3 tabular-nums">{v?.noOfPackages ?? '—'}</td>
                   <td className="py-1 pr-3 tabular-nums">{v?.grossWeight ?? '—'}</td>
                   <td className="py-1 pr-3">{v?.trackingStatus || '—'}</td>
-                  <td className="py-1 pr-3">{v?.builtyStatus || '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -229,7 +270,7 @@ export function Step2Vehicles() {
               <tr className="border-t border-line">
                 <td className="py-1 pr-3" colSpan={3}>Totals</td>
                 <td className="py-1 pr-3 tabular-nums">{grossSum.toFixed(2)}</td>
-                <td className="py-1 pr-3" colSpan={2}>Net {netSum.toFixed(2)} kg</td>
+                <td className="py-1 pr-3">Net {netSum.toFixed(2)} kg</td>
               </tr>
             </tfoot>
           </table>

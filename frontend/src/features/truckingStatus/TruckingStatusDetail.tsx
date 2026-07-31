@@ -106,6 +106,7 @@ export function TruckingStatusDetail() {
             <Row label="Payment status" value={row.paymentStatus} />
             <Row label="Paid" value={row.paidAmount != null ? `Rs. ${row.paidAmount}` : undefined} />
             <Row label="Outstanding" value={out != null ? `Rs. ${out.toFixed(2)}` : undefined} />
+            <Row label="Detention" value={row.detention != null && row.detention > 0 ? `Rs. ${row.detention}` : undefined} />
           </CardContent>
         </Card>
       </div>
@@ -135,7 +136,6 @@ export function TruckingStatusDetail() {
                     <th className="py-1 pr-3">Driver</th>
                     {row.movementType === 'Inbound' && <th className="py-1 pr-3">Container</th>}
                     <th className="py-1 pr-3">Tracking</th>
-                    <th className="py-1 pr-3">Builty</th>
                   </tr>
                 </thead>
                 <tbody className="text-ink">
@@ -151,7 +151,6 @@ export function TruckingStatusDetail() {
                         <td className="py-1 pr-3">{v.containerNo ? `${v.containerNo} (${v.containerType || '?'})` : '—'}</td>
                       )}
                       <td className="py-1 pr-3">{v.trackingStatus || '—'}</td>
-                      <td className="py-1 pr-3">{v.builtyStatus || '—'}</td>
                     </tr>
                   ))}
                 </tbody>

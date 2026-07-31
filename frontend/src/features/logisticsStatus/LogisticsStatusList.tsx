@@ -9,7 +9,9 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/features/auth/AuthContext'
 import { can } from '@/lib/roleAccess'
-import { exportNumbers, totalQuantity } from '@/features/logisticsStatus/schema'
+import {
+  totalNetWeight, totalGrossWeight, orderTypeLabel, jobNumbers, batchDisplayLabel,
+} from '@/features/logisticsStatus/schema'
 import {
   getLogisticsOrders, deriveImportFobRequests,
   customerList, orderTypeList, statusList,
@@ -18,13 +20,6 @@ import {
 import { getTruckingReadthrough } from '@/lib/truckingStatusData'
 
 const num = (v: number) => v.toLocaleString('en-US')
-const dateShort = (v?: string) => {
-  if (!v) return '—'
-  const d = new Date(v)
-  if (Number.isNaN(+d)) return '—'
-  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`
-}
 
 function TruckingHandoffBadge({ order }: { order: LogisticsOrder }) {
   if (!order.sentToTrucking) {
@@ -48,15 +43,15 @@ function TruckingHandoffBadge({ order }: { order: LogisticsOrder }) {
 /**
  * Logistics Status — list view.
  *
- * Two tables: the team's own orders (native, editable), and — separately — a
- * read-only "Open Requests: Import FOB" feed. On FOB terms Qadri owns the
- * goods from the origin port, so Logistics arranges the sea freight and
- * clearing agent for them; those consignments live in Imports Status, so the
- * request rows link back there and cannot be edited here (the record's home
- * is Imports). Same live-derivation idea Trucking Status uses.
+ * Columns per the confirmed spec: MO # (with system id), merged
+ * department+order-type label, Job #s, Customer, Batch # (with an MO-group
+ * accent when siblings are visible), Items, Packages, Net/Gross Weight,
+ * Works (first package's packing works), Incoterm — plus Status and actions,
+ * which every other list in this app keeps.
  *
- * Transportation is no longer tracked here (see schema.ts) — the "Sent to
- * Trucking" column reads through to the live Trucking job once handed off.
+ * Below the orders table, a read-only "Open Requests: Import FOB" feed (FOB
+ * imports needing Logistics to arrange sea freight and a clearing agent —
+ * managed in Imports Status, linked back there).
  */
 export function LogisticsStatusList() {
   const navigate = useNavigate()
@@ -67,20 +62,29 @@ export function LogisticsStatusList() {
   const fobRequests = useMemo(() => deriveImportFobRequests(), [])
   const canEdit = can(user, 'editAny')
 
+  // MO-group sizes across the currently-visible rows — drives the "shares an
+  // MO with other batches" accent on the Batch # column.
+  const moCounts = useMemo(() => {
+    const m = new Map<string, number>()
+    rows.forEach((o) => { if (o.moNo) m.set(o.moNo, (m.get(o.moNo) ?? 0) + 1) })
+    return m
+  }, [rows])
+
   const exportCsv = () => {
     const cols = [
-      'System ID', 'Order Type', 'Customer', 'MO No.', 'Incoterm', 'Items', 'Total Quantity', 'Export No(s).',
-      'Origin', 'Status', 'Containers', 'Gate Out Date', 'Sent to Trucking',
+      'System ID', 'MO No.', 'Batch', 'Department', 'Order Type', 'Job No(s).', 'Customer',
+      'Items', 'Net Weight', 'Gross Weight', 'Packages', 'Works', 'Incoterm',
+      'Origin', 'Status', 'Gate Out Date', 'Sent to Trucking',
     ]
     const line = (o: LogisticsOrder) => [
-      o.systemId, o.orderType, o.customerName, o.moNo ?? '', o.incoterm ?? '',
-      o.items.map((it) => it.itemDetail).join('; '),
-      totalQuantity(o.items),
-      exportNumbers(o.items).join('; '),
+      o.systemId, o.moNo ?? '', batchDisplayLabel(o.batchNo, o.batchLabel), o.department,
+      orderTypeLabel(o.department, o.orderType),
+      jobNumbers(o.items).join('; '), o.customerName,
+      o.items.map((it) => `${it.itemDetail} ×${it.quantity ?? 0}`).join('; '),
+      totalNetWeight(o.items), totalGrossWeight(o.items),
+      o.packages.length, o.packages.find((p) => p.packingWorks)?.packingWorks ?? '', o.incoterm ?? '',
       o.orderType === 'Export' ? o.originCountry : `${o.originCity}, ${o.originProvince}`,
-      o.status,
-      o.containers.map((c) => c.containerType).join('; '),
-      o.gateOutDate, o.sentToTrucking ? 'Yes' : 'No',
+      o.status, o.gateOutDate, o.sentToTrucking ? 'Yes' : 'No',
     ].map((v) => {
       const s = String(v ?? '')
       return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
@@ -114,12 +118,30 @@ export function LogisticsStatusList() {
         search={{
           value: filters.search ?? '',
           onChange: (search) => setFilters((f) => ({ ...f, search })),
-          placeholder: 'ID, customer, item, IDM, export no, job no…',
+          placeholder: 'ID, MO no., customer, item, job no…',
         }}
       >
         <MultiSelectFilter label="Order type" options={orderTypeList} value={filters.orderType ?? []} onChange={(orderType) => setFilters((f) => ({ ...f, orderType: orderType as typeof f.orderType }))} />
         <MultiSelectFilter label="Status" options={statusList} value={filters.status ?? []} onChange={(status) => setFilters((f) => ({ ...f, status }))} />
         <MultiSelectFilter label="Customer" options={customerList} value={filters.customer ?? []} onChange={(customer) => setFilters((f) => ({ ...f, customer }))} />
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs text-muted">Gate out from</label>
+          <input
+            type="date"
+            value={filters.gateOutFrom ?? ''}
+            onChange={(e) => setFilters((f) => ({ ...f, gateOutFrom: e.target.value || undefined }))}
+            className="h-10 rounded-lg border border-line bg-surface px-3 text-sm text-ink"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs text-muted">Gate out to</label>
+          <input
+            type="date"
+            value={filters.gateOutTo ?? ''}
+            onChange={(e) => setFilters((f) => ({ ...f, gateOutTo: e.target.value || undefined }))}
+            className="h-10 rounded-lg border border-line bg-surface px-3 text-sm text-ink"
+          />
+        </div>
       </FilterBar>
 
       {rows.length === 0 ? (
@@ -134,60 +156,66 @@ export function LogisticsStatusList() {
           <table className="w-full text-sm">
             <thead className="bg-canvas-alt text-xs text-muted">
               <tr>
-                <th className="px-3 py-2 text-left">ID</th>
-                <th className="px-3 py-2 text-left">Order type</th>
+                <th className="px-3 py-2 text-left">MO #</th>
+                <th className="px-3 py-2 text-left">Order Type</th>
+                <th className="px-3 py-2 text-left">Job #</th>
                 <th className="px-3 py-2 text-left">Customer</th>
-                <th className="px-3 py-2 text-left">MO No. / Incoterm</th>
+                <th className="px-3 py-2 text-left">Batch #</th>
                 <th className="px-3 py-2 text-left">Items</th>
-                <th className="px-3 py-2 text-right">Total qty</th>
+                <th className="px-3 py-2 text-left">Packages</th>
+                <th className="px-3 py-2 text-right">Net Wt (kg)</th>
+                <th className="px-3 py-2 text-right">Gross Wt (kg)</th>
+                <th className="px-3 py-2 text-left">Works</th>
+                <th className="px-3 py-2 text-left">Incoterm</th>
                 <th className="px-3 py-2 text-left">Status</th>
-                <th className="px-3 py-2 text-left">Containers</th>
                 <th className="px-3 py-2 text-left">Sent to Trucking</th>
-                <th className="px-3 py-2 text-right">Gate out</th>
                 <th className="px-3 py-2 text-left"></th>
               </tr>
             </thead>
             <tbody>
               {rows.map((o) => {
-                const first = o.items[0]
-                const more = o.items.length - 1
-                const exportNos = exportNumbers(o.items)
+                const jobNos = jobNumbers(o.items)
+                const itemsSummary = o.items.map((it) => `${it.itemDetail}${it.quantity !== undefined ? ` ×${it.quantity}` : ''}`)
+                const inMoGroup = !!o.moNo && (moCounts.get(o.moNo) ?? 0) > 1
+                const works = o.packages.find((p) => p.packingWorks)?.packingWorks
+                const colours = [...new Set(o.packages.map((p) => p.colourCode).filter(Boolean))]
                 return (
                   <tr
                     key={o.systemId}
-                    className="cursor-pointer border-t border-line hover:bg-canvas-alt"
+                    className={`cursor-pointer border-t border-line hover:bg-canvas-alt ${inMoGroup ? 'border-l-2 border-l-brand' : ''}`}
                     onClick={() => navigate(`/logistics-status/${o.systemId}`)}
                   >
-                    <td className="px-3 py-2 font-semibold tabular-nums">{o.systemId}</td>
-                    <td className="px-3 py-2">{o.orderType}</td>
-                    <td className="px-3 py-2">{o.customerName}</td>
-                    <td className="px-3 py-2 text-[13px]">
-                      <div className="tabular-nums">{o.moNo || '—'}</div>
-                      <div className="text-muted">{o.incoterm || '—'}</div>
-                    </td>
                     <td className="px-3 py-2">
-                      <div>{first?.itemDetail ?? '—'}{more > 0 && <span className="text-muted"> · +{more} more</span>}</div>
-                      {o.orderType === 'Export' && (
-                        <div className="text-[11px] tabular-nums text-muted">
-                          {exportNos.length === 0 ? 'No export no.' : exportNos.length === 1 ? exportNos[0] : `${exportNos.length} export nos.`}
-                        </div>
+                      <div className="tabular-nums font-semibold">{o.moNo || '—'}</div>
+                      <div className="text-[11px] tabular-nums text-muted">{o.systemId}</div>
+                    </td>
+                    <td className="px-3 py-2">{orderTypeLabel(o.department, o.orderType)}</td>
+                    <td className="px-3 py-2 text-[13px] tabular-nums" title={jobNos.join(', ') || undefined}>
+                      {jobNos.length === 0 ? '—' : jobNos.length <= 2 ? jobNos.join(', ') : `${jobNos.slice(0, 2).join(', ')} +${jobNos.length - 2}`}
+                    </td>
+                    <td className="px-3 py-2">{o.customerName}</td>
+                    <td className="px-3 py-2">
+                      <span className="text-[13px]">{batchDisplayLabel(o.batchNo, o.batchLabel)}</span>
+                      {inMoGroup && (
+                        <span className="ml-1.5 rounded-full bg-brand/10 px-1.5 py-0.5 text-[10px] text-brand">MO group</span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums">{num(totalQuantity(o.items))}</td>
-                    <td className="px-3 py-2">
-                      <StatusBadge label={o.status} />
+                    <td className="px-3 py-2 max-w-[220px] truncate text-[13px]" title={itemsSummary.join(', ') || undefined}>
+                      {itemsSummary.length === 0 ? '—' : itemsSummary.join(', ')}
                     </td>
                     <td className="px-3 py-2 text-[13px] text-muted">
-                      {o.containers.length === 0
-                        ? '—'
-                        : o.containers.length === 1
-                          ? o.containers[0].containerType
-                          : `${o.containers.length} containers`}
+                      {o.packages.length === 0 ? '—' : `${o.packages.length} pkg${o.packages.length === 1 ? '' : 's'}${colours.length ? ` (${colours.join(', ')})` : ''}`}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">{num(totalNetWeight(o.items))}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{num(totalGrossWeight(o.items))}</td>
+                    <td className="px-3 py-2 text-[13px] text-muted">{works || '—'}</td>
+                    <td className="px-3 py-2 text-[13px]">{o.incoterm || '—'}</td>
+                    <td className="px-3 py-2">
+                      <StatusBadge label={o.status} />
                     </td>
                     <td className="px-3 py-2">
                       <TruckingHandoffBadge order={o} />
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums">{dateShort(o.gateOutDate)}</td>
                     <td className="px-3 py-2">
                       <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
                         <button
