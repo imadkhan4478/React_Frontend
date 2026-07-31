@@ -6,10 +6,12 @@ import { Button } from '@/components/ui/button'
 import { useAuth } from '@/features/auth/AuthContext'
 import { can } from '@/lib/roleAccess'
 import {
-  WIZARD_STEPS, daysBetween, requiredVsDeliveryDelay,
-  totalQuantity, totalNetWeight, totalGrossWeight, ratePerWeight, exportNumbers,
+  WIZARD_STEPS, daysBetween, marketingDelay, buildRemarksFeed,
+  totalQuantity, totalNetWeight, totalGrossWeight, exportNumbers,
+  packingDelay, packingSavings, outstandingByItem,
 } from './schema'
 import { getLogisticsOrder } from '@/lib/logisticsStatusData'
+import { getTruckingReadthrough } from '@/lib/truckingStatusData'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const dateShort = (v?: string) => {
@@ -45,9 +47,11 @@ const LOCAL_COSTS: { name: string; label: string }[] = [
  *
  * All five modules for one order, read-only, on a single page — same purpose
  * as ImportsStatusDetail: this is where a manager actually looks things up,
- * the wizard is for entry. Items and containers get their own tables since an
- * order can carry several of each, with export numbers shown per item since
- * they can legitimately differ within one order.
+ * the wizard is for entry. Section 2 is Packing (Transportation was removed —
+ * see schema.ts), with each package's delay/savings shown and the same
+ * outstanding-quantity summary the wizard's Packing step shows. Section 5
+ * adds the marketing delay, the merged remarks feed, and — once sent — a
+ * read-through into the linked Trucking job.
  */
 export default function LogisticsStatusDetail() {
   const { id } = useParams<{ id: string }>()
@@ -75,11 +79,12 @@ export default function LogisticsStatusDetail() {
   const qty = totalQuantity(row.items)
   const netW = totalNetWeight(row.items)
   const grossW = totalGrossWeight(row.items)
-  const rate = ratePerWeight(row.actualFreight, row.items)
   const exportNos = exportNumbers(row.items)
-  const requiredDelay = requiredVsDeliveryDelay(row)
-  const transportDelay = daysBetween(row.dispatchNoteDate, row.gateOutDate)
   const arrivalDelay = daysBetween(row.croArrivalDate, row.actualArrivalDate)
+  const outstanding = outstandingByItem(row.items, row.packages)
+  const mDelay = marketingDelay(row.packages, row.gateOutDate)
+  const feed = buildRemarksFeed(row.items, row.remarksLog)
+  const readthrough = row.sentToTrucking ? getTruckingReadthrough(row.systemId) : null
 
   const EditLink = ({ step }: { step: string }) => {
     if (!editable) return null
@@ -117,16 +122,11 @@ export default function LogisticsStatusDetail() {
       </div>
 
       {/* key figures */}
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-4 lg:grid-cols-7">
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-3 lg:grid-cols-6">
         <KeyFigure label="Total quantity" value={num(qty)} sub={`${row.items.length} item line${row.items.length === 1 ? '' : 's'}`} />
         <KeyFigure label="Total weight" value={`${num(grossW)} kg`} sub={`${num(netW)} kg net`} />
-        <KeyFigure
-          label="Required by" value={dateShort(row.requiredDate)}
-          sub={requiredDelay === null ? 'Needs required + delivery date' : requiredDelay <= 0 ? (requiredDelay === 0 ? 'On time' : `${-requiredDelay}d ahead`) : `${requiredDelay}d late`}
-          warn={requiredDelay !== null && requiredDelay > 0}
-        />
-        <KeyFigure label="Freight" value={pkr(row.actualFreight)} sub={rate !== null ? `${rate.toFixed(2)} /kg` : 'Rate needs freight + weight'} />
-        <KeyFigure label="Containers" value={row.containers.length ? String(row.containers.length) : '—'} sub={row.containers.length ? [...new Set(row.containers.map((c) => c.containerType))].join(', ') : 'None yet'} />
+        <KeyFigure label="MO No." value={row.moNo || '—'} sub={row.incoterm || 'No incoterm'} />
+        <KeyFigure label="Packages" value={row.packages.length ? String(row.packages.length) : '—'} sub={row.packages.length ? `${row.packages.filter((p) => p.status === 'Packed').length} packed` : 'None yet'} />
         <KeyFigure label="Expenditure" value={pkr(costTotal || undefined)} sub={`${costs.length} cost line${costs.length === 1 ? '' : 's'} tracked`} />
         {isExport && (
           <KeyFigure label="Export no(s)." value={exportNos.length ? String(exportNos.length) : '—'} sub={exportNos.length <= 1 ? (exportNos[0] ?? 'Not yet entered') : `${exportNos.length} distinct`} warn={exportNos.length === 0} />
@@ -148,29 +148,32 @@ export default function LogisticsStatusDetail() {
           <Field label="Order type" value={row.orderType} />
           <Field label="Customer" value={row.customerName} span={2} />
           <Field label="Origin" value={isExport ? row.originCountry : `${row.originCity}, ${row.originProvince}`} />
-          <Field label="Requisition date" value={dateShort(row.requisitionDate)} mono />
-          <Field label="Required date" value={dateShort(row.requiredDate)} mono />
+          <Field label="MO No." value={row.moNo} mono />
+          <Field label="Incoterm" value={row.incoterm} />
         </FieldGrid>
 
         <div className="mt-4 overflow-auto rounded-lg border border-line">
           <table className="w-full text-sm">
             <thead className="bg-canvas-alt text-xs text-muted">
               <tr>
+                <th className="px-3 py-2 text-left">Job #</th>
                 <th className="px-3 py-2 text-left">Item</th>
                 <th className="px-3 py-2 text-right">Quantity</th>
                 <th className="px-3 py-2 text-right">Net wt (kg)</th>
                 <th className="px-3 py-2 text-right">Gross wt (kg)</th>
                 <th className="px-3 py-2 text-left">IDM</th>
                 {isExport && <th className="px-3 py-2 text-left">Export no.</th>}
-                <th className="px-3 py-2 text-left">Batch</th>
+                <th className="px-3 py-2 text-left">Planned RFD</th>
+                <th className="px-3 py-2 text-left">Actual RFD</th>
               </tr>
             </thead>
             <tbody>
               {row.items.map((it, i) => (
                 <tr key={i} className="border-t border-line">
+                  <td className="px-3 py-2 tabular-nums text-muted">{it.jobNo || '—'}</td>
                   <td className="px-3 py-2">{it.itemDetail || <span className="italic text-muted">Not named</span>}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{it.quantity !== undefined ? num(it.quantity) : '—'}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{it.netWeight !== undefined ? num(it.netWeight) : '—'}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{num(it.quantity !== undefined && it.unitWeight !== undefined ? it.quantity * it.unitWeight : 0)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{it.grossWeight !== undefined ? num(it.grossWeight) : '—'}</td>
                   <td className="px-3 py-2 tabular-nums">{it.idm || '—'}</td>
                   {isExport && (
@@ -178,17 +181,19 @@ export default function LogisticsStatusDetail() {
                       {it.exportNo || <span className="rounded border border-[var(--color-watch)]/30 bg-[var(--color-watch-bg)] px-1.5 py-0.5 text-[11px] text-[var(--color-watch)]">Missing</span>}
                     </td>
                   )}
-                  <td className="px-3 py-2 text-muted">{it.batchNo || '—'}</td>
+                  <td className="px-3 py-2 tabular-nums">{dateShort(it.plannedRfdDate)}</td>
+                  <td className="px-3 py-2 tabular-nums">{dateShort(it.actualRfdDate)}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr className="border-t-2 border-line font-semibold">
                 <td className="px-3 py-2">Total</td>
+                <td className="px-3 py-2" />
                 <td className="px-3 py-2 text-right tabular-nums">{num(qty)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{num(netW)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{num(grossW)}</td>
-                <td colSpan={isExport ? 3 : 2} />
+                <td colSpan={isExport ? 4 : 3} />
               </tr>
             </tfoot>
           </table>
@@ -198,21 +203,71 @@ export default function LogisticsStatusDetail() {
         )}
       </Section>
 
-      {/* 2 — transportation */}
-      <Section id="s-transportation" title="Transportation" edit={<EditLink step="transportation" />}>
-        <FieldGrid>
-          <Field label="Transporter" value={row.transporterName} />
-          <Field label="Vehicle type" value={row.vehicleType} />
-          <Field label="Dispatch note date" value={dateShort(row.dispatchNoteDate)} mono />
-          <Field label="Gate out date" value={dateShort(row.gateOutDate)} mono />
-          <Field label="Delay" value={daysFmt(transportDelay)} mono />
-          <Field label="Quoted freight" value={pkr(row.quotedFreight)} mono />
-          <Field label="Actual freight" value={pkr(row.actualFreight)} mono />
-          <Field label="Rate per weight" value={rate !== null ? `${rate.toFixed(2)} /kg` : undefined} mono />
-          <Field label="Actual delivery date" value={dateShort(row.actualDeliveryDate)} mono />
-          <Field label="Origin factory" value={row.originFactory} />
-          <Field label="Destination" value={row.destination} span={2} />
-        </FieldGrid>
+      {/* 2 — packing */}
+      <Section id="s-packing" title="Packing" edit={<EditLink step="packing" />}>
+        {row.packages.length === 0 ? (
+          <p className="text-sm text-muted">No packages added yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {row.packages.map((pkg, i) => {
+              const delay = packingDelay(pkg, row.items)
+              const savings = packingSavings(pkg)
+              return (
+                <div key={i} className="rounded-lg border border-line">
+                  <div className="flex flex-wrap items-center gap-2 border-b border-line bg-canvas-alt px-3 py-2 text-[13px]">
+                    <span className="font-semibold">Package {i + 1}</span>
+                    {pkg.colourCode && <span className="text-muted">{pkg.colourCode}</span>}
+                    <span className="ml-auto"><StatusBadge label={pkg.status} /></span>
+                  </div>
+                  <div className="p-3">
+                    <FieldGrid>
+                      <Field label="Packing works" value={pkg.packingWorks} />
+                      <Field label="Packing date" value={dateShort(pkg.packingDate)} mono />
+                      <Field label="Packing delay" value={daysFmt(delay)} mono />
+                      <Field label="Quoted / actual cost" value={`${pkr(pkg.quotedPackingCost)} / ${pkr(pkg.actualPackingCost)}`} mono />
+                      <Field label="Savings" value={savings === null ? undefined : pkr(savings)} mono />
+                      <Field label="Gross weight" value={pkg.grossWeight !== undefined ? `${num(pkg.grossWeight)} kg` : undefined} mono />
+                    </FieldGrid>
+                  </div>
+                  {pkg.allocations.length > 0 && (
+                    <div className="border-t border-line px-4 py-2 text-[12px] text-muted">
+                      {pkg.allocations.map((a) => {
+                        const item = row.items.find((it) => it.id === a.itemId)
+                        return <div key={a.id}>{item?.itemDetail ?? a.itemId}: {a.quantity ?? 0}</div>
+                      })}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        <div className="mt-4 overflow-auto rounded-lg border border-line">
+          <table className="w-full text-sm">
+            <thead className="bg-canvas-alt text-xs text-muted">
+              <tr>
+                <th className="px-3 py-2 text-left">Item</th>
+                <th className="px-3 py-2 text-right">Order qty</th>
+                <th className="px-3 py-2 text-right">Outstanding</th>
+              </tr>
+            </thead>
+            <tbody>
+              {row.items.map((item) => {
+                const rest = outstanding[item.id] ?? item.quantity ?? 0
+                return (
+                  <tr key={item.id} className="border-t border-line">
+                    <td className="px-3 py-2">{item.itemDetail || '—'}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-muted">{item.quantity ?? '—'}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {rest === 0 ? <span className="text-[var(--color-healthy)]">Fully allocated</span> : <span className="text-[var(--color-watch)]">{rest}</span>}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       </Section>
 
       {/* 3 — shipping */}
@@ -287,10 +342,43 @@ export default function LogisticsStatusDetail() {
       <Section id="s-status" title="Status" edit={<EditLink step="status" />}>
         <FieldGrid>
           <Field label="Current status" value={<StatusBadge label={row.status} />} />
+          <Field label="Marketing delay" value={daysFmt(mDelay)} mono />
+          <Field label="Gate out date" value={dateShort(row.gateOutDate)} mono />
         </FieldGrid>
-        {row.remarks && (
-          <div className="mt-3 rounded-lg border border-line bg-canvas-alt px-3 py-2.5 text-[13px] leading-relaxed text-ink/80">
-            {row.remarks}
+
+        <div className="mt-3 rounded-lg border border-line bg-canvas-alt px-3 py-2.5 text-[13px]">
+          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">Trucking</div>
+          {!row.sentToTrucking ? (
+            <p className="text-muted">Not sent to Trucking yet.</p>
+          ) : !readthrough || !readthrough.taken ? (
+            <p className="text-muted">Awaiting trucking pickup — visible as an open request in Trucking Status.</p>
+          ) : (
+            <div className="grid gap-1 sm:grid-cols-3">
+              <div><span className="text-muted">Job:</span> {readthrough.truckingJobId}</div>
+              <div><span className="text-muted">Transporter:</span> {readthrough.transporterName || '—'}</div>
+              <div><span className="text-muted">Vehicles:</span> {readthrough.vehicleCount}</div>
+              <div className="sm:col-span-3"><span className="text-muted">Tracking:</span> {readthrough.trackingRollupLabel}</div>
+            </div>
+          )}
+        </div>
+
+        {feed.length > 0 && (
+          <div className="mt-3 space-y-2">
+            {feed.map((entry) => (
+              <div key={entry.id} className="rounded-lg border border-line bg-canvas-alt/40 px-3 py-2 text-[13px]">
+                <div className="mb-0.5 flex items-center gap-2 text-[11px] text-muted">
+                  {entry.system && (
+                    <span className="rounded bg-[var(--color-info-bg)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-info)]">
+                      System
+                    </span>
+                  )}
+                  <span>{entry.authoredBy}</span>
+                  <span>·</span>
+                  <span>{new Date(entry.authoredAt).toLocaleString()}</span>
+                </div>
+                <p className="text-ink/80">{entry.text}</p>
+              </div>
+            ))}
           </div>
         )}
       </Section>

@@ -118,16 +118,8 @@ export const consignmentItemSchema = z.object({
    *  on the master; the line records the one actually used. */
   hsCode: optionalText,
 
-  // step 2 — pricing is per item, since line values drive landed cost later
+  // step 2 — pricing is per item
   foreignUnitPrice: optionalNumber,
-
-  // step 7 — manual, in PKR, never calculated
-  elcPkr: optionalNumber,
-  alcPkr: optionalNumber,
-  elcEnteredBy: optionalText,
-  elcEnteredAt: optionalDate,
-  alcEnteredBy: optionalText,
-  alcEnteredAt: optionalDate,
 })
 export type ConsignmentItem = z.infer<typeof consignmentItemSchema>
 
@@ -403,8 +395,6 @@ export const emptyItem = (id: string): ConsignmentItem => ({
   itemId: '', itemName: '', itemCode: '', specification: '',
   quantity: undefined, uom: '', batchNo: '', hsCode: '',
   foreignUnitPrice: undefined,
-  elcPkr: undefined, alcPkr: undefined,
-  elcEnteredBy: '', elcEnteredAt: '', alcEnteredBy: '', alcEnteredAt: '',
 })
 
 export const emptyPayment = (id: string): Payment => ({
@@ -465,8 +455,6 @@ export const WIZARD_STEPS: WizardStepDef[] = [
     fields: ['status', 'userRemarks'] },
   { step: 6, key: 'clearance', label: 'Clearance',
     fields: ['clearingAgent', 'gdNumber', 'gdDate', 'freeDays', 'gateOutDate', 'demurrageCost'], optionalModule: true },
-  { step: 7, key: 'landed-cost', label: 'Landed Cost',
-    fields: ['items'], optionalModule: true },
 ]
 
 export const stepByKey = (key: string) => WIZARD_STEPS.find((s) => s.key === key)
@@ -539,24 +527,22 @@ export const outstandingBalance = (
   d: Pick<ConsignmentDraft, 'items' | 'payments'>,
 ) => foreignTotal(d) - paidTotal(d) - unpaidTotal(d)
 
-export const elcTotal = (d: Pick<ConsignmentDraft, 'items'>) =>
-  d.items.reduce((s, i) => s + (i.elcPkr ?? 0), 0)
-
-export const alcTotal = (d: Pick<ConsignmentDraft, 'items'>) =>
-  d.items.reduce((s, i) => s + (i.alcPkr ?? 0), 0)
-
-/** Absolute and percentage — reports use the percentage. */
-export const landedCostVariance = (d: Pick<ConsignmentDraft, 'items'>) => {
-  const elc = elcTotal(d)
-  const alc = alcTotal(d)
-  if (!elc || !alc) return undefined
-  return { absolute: alc - elc, percent: ((alc - elc) / elc) * 100 }
+/**
+ * Total money spent bringing this consignment in, from figures already
+ * captured elsewhere in the wizard — goods value (Finance, converted to PKR
+ * at the booked rate), bank charges (Payments), and demurrage (Clearance).
+ * The system deliberately does NOT try to be the definitive landed cost:
+ * accounts carry duty, freight and agent fees it can't see. This is the
+ * shipment's visible expenditure, shown for reference, never keyed in.
+ */
+export const totalExpenditure = (
+  d: Pick<ConsignmentDraft, 'items' | 'exchangeRate' | 'payments' | 'demurrageCost'>,
+) => {
+  const goods = localTotal(d) ?? 0
+  const bank = bankChargesTotal(d)
+  const demurrage = d.demurrageCost ?? 0
+  return { goods, bank, demurrage, total: goods + bank + demurrage }
 }
-
-/** The figure supplier comparison reports key on, since quantities differ
- *  between shipments. */
-export const alcPerUnit = (item: ConsignmentItem) =>
-  item.alcPkr !== undefined && item.quantity ? item.alcPkr / item.quantity : undefined
 
 /* ------------------------------------------------------------------ */
 /* Pending information                                                 */

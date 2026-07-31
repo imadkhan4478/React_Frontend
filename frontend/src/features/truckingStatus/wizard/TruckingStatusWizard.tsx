@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { FormProvider, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import type { z } from 'zod'
 import { PageHeader } from '@/components/PageHeader'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -65,7 +66,11 @@ export function TruckingStatusWizard() {
   // manual jobs and live-derived rows, never the in-progress-draft cache).
   const trulyNew = !id || !isKnownRecord(id)
 
-  const methods = useForm<TruckingDraft>({
+  // takenSnapshot (and a couple of other fields) carry a zod `.default()`,
+  // which makes the resolver's INPUT type diverge from TruckingDraft (the
+  // OUTPUT type) — same divergence already fixed the same way in
+  // importsStatus/logisticsStatus's wizards; see the note there.
+  const methods = useForm<z.input<typeof truckingDraftSchema>, unknown, TruckingDraft>({
     resolver: zodResolver(truckingDraftSchema),
     defaultValues: DRAFT_DEFAULT_VALUES,
     mode: 'onBlur',
@@ -111,7 +116,11 @@ export function TruckingStatusWizard() {
       // remount (see the trulyNew comment above), so without this, whatever
       // was just filled in would vanish the moment the next step's fresh
       // useForm mounts with DRAFT_DEFAULT_VALUES instead.
-      updateTruckingJob(targetId, methods.getValues())
+      // getValues() returns the resolver's INPUT type (fields with a zod
+      // `.default()` are optional there); updateTruckingJob wants the OUTPUT
+      // type. Safe to cast — those defaulted fields are always populated
+      // once the form has mounted with defaultValues.
+      updateTruckingJob(targetId, methods.getValues() as TruckingDraft)
       navigate(`/trucking-status/${targetId}/edit/${clamped}`)
       return
     }
@@ -128,7 +137,7 @@ export function TruckingStatusWizard() {
   }
 
   function onDialogSaveAndMove() {
-    if (id) updateTruckingJob(id, methods.getValues())
+    if (id) updateTruckingJob(id, methods.getValues() as TruckingDraft)
     rebaseline()
     const target = pendingNav
     setPendingNav(null)

@@ -2,12 +2,14 @@ import {
   MOVEMENT_TYPES,
   SHIFTING_TYPES,
   VEHICLE_TRACKING_STATUSES,
+  DRAFT_DEFAULT_VALUES,
   emptyVehicle,
   trackingRollup,
   totalGrossWeight,
   type TruckingDraft,
   type TruckingSource,
   type Vehicle,
+  type TakenSourceSnapshot,
 } from '@/features/truckingStatus/schema'
 import { CONSIGNMENT_STATUSES } from '@/features/importsStatus/schema'
 // Cross-module stores. Both getLogisticsOrders (lib/logisticsStatusData.ts)
@@ -16,6 +18,13 @@ import { CONSIGNMENT_STATUSES } from '@/features/importsStatus/schema'
 // deriveFromImportsFob below for what was guessed vs. confirmed.
 import * as logisticsData from '@/lib/logisticsStatusData'
 import * as importsData from '@/lib/importsStatusData'
+// Type-only — erased at compile time, so importing it here does NOT create a
+// runtime circular dependency with lib/logisticsStatusData.ts (which does not
+// import this file). getTruckingReadthrough lives here rather than there
+// because this module already owns the established "read the other store"
+// direction (Trucking → Logistics/Imports); mirroring that keeps the import
+// graph one-directional.
+import type { TruckingReadthrough } from '@/features/logisticsStatus/schema'
 
 /**
  * Mock data layer for Trucking Status, mirroring lib/logisticsStatusData.ts.
@@ -25,15 +34,13 @@ import * as importsData from '@/lib/importsStatusData'
  *      operator (including follow-up reminders they create themselves).
  *   2. LIVE-DERIVED requests — computed at read time from the logistics and
  *      imports-FOB stores. These are NEVER copied; they reflect their source
- *      and there is no "accept" step. See deriveOpenRequests().
+ *      and there is no "accept" step — UNTIL an operator clicks Take Action
+ *      (see takeAction() below), at which point that specific source record
+ *      converts into an independent, persisted job and permanently stops
+ *      being re-derived (see findTakenJobBySourceRef and the exclusion
+ *      filters in deriveFromLogistics/deriveFromImportsFob).
  *
  * getTruckingJobs() returns the union so the list shows both.
- *
- * NOTE FOR CLAUDE CODE: the cross-module reads below are written against the
- * *expected* exports of logisticsStatusData / importsStatusData and the status
- * labels in their schemas. Confirm the real names and adjust — they are the
- * join key for the whole feature and must match exactly. Anything that can't be
- * confirmed is behind a guarded dynamic import so the module still loads.
  */
 
 export interface TruckingRow {
@@ -57,6 +64,9 @@ export interface TruckingRow {
   remarks?: string
   // For derived rows: id of the source record so the list can read through.
   sourceRef?: string
+  // Set once this row was created via Take Action — see takeAction() below.
+  takenAt?: string
+  takenSnapshot?: TakenSourceSnapshot[]
   // Whether this request is still "open" / pending trucking action.
   open?: boolean
 }
@@ -139,62 +149,61 @@ function makeMockJob(i: number): TruckingRow {
 
 const MANUAL_JOBS: TruckingRow[] = Array.from({ length: 26 }, (_, i) => makeMockJob(i))
 
-// Session cache of edits so updateTruckingJob persists within a session.
+// Session cache of edits so updateTruckingJob persists within a session. Also
+// the durable store for taken jobs — see takeAction()/findTakenJobBySourceRef.
 const EDITS = new Map<string, TruckingRow>()
+
+/**
+ * A source record (Logistics order or FOB import) that already has an
+ * independent, persisted job here — found by scanning EDITS, since that is
+ * the only place a taken job lives (not-yet-taken derived rows are computed
+ * fresh on every call and never stored). This is the single source of truth
+ * both for "has this already been taken" (used to exclude it from further
+ * live derivation below) and for Logistics' read-through panel.
+ */
+export function findTakenJobBySourceRef(sourceRef: string): TruckingRow | undefined {
+  return [...EDITS.values()].find((r) => r.sourceRef === sourceRef)
+}
 
 // ---------------------------------------------------------------------------
 // LIVE cross-module derived requests.
 //
 // These read the logistics + imports stores at call time. Both getter names
 // and every row field used below have been confirmed against the real
-// lib/logisticsStatusData.ts and lib/importsStatusData.ts (see the comments
-// on each derive function). The try/catch is kept as a defensive backstop —
-// harmless once the exports are confirmed correct, and cheap insurance if a
-// future refactor of either store renames something out from under this file.
+// lib/logisticsStatusData.ts and lib/importsStatusData.ts. The try/catch is
+// kept as a defensive backstop — harmless once the exports are confirmed
+// correct, and cheap insurance if a future refactor of either store renames
+// something out from under this file.
 //
-// Imports now carries a real `incoterm` field (importsStatus/schema.ts) —
-// deriveFromImportsFob() below checks it directly, no placeholder heuristic.
+// TRANSPORTATION REMOVED FROM LOGISTICS: Logistics no longer tracks
+// transporter/gate-out-leg fields at all — that whole leg is now Trucking's
+// job, handed off explicitly via the order's `sentToTrucking` checkbox
+// (Logistics Status Step 5) rather than inferred from order status. So
+// deriveFromLogistics below is now gated on `sentToTrucking`, not a status
+// set, and excludes any order that already has a taken job (see
+// findTakenJobBySourceRef) so a taken request never shows twice.
 // ---------------------------------------------------------------------------
 
-/**
- * CONFIRMED against the real lib/logisticsStatusData.ts: the getter is
- * `getLogisticsOrders`, and every field name read below (systemId, status,
- * gateOutDate, transporterName, itemDetail, originFactory, originCity,
- * destination, originCountry, idm, exportNo) matches `LogisticsOrder` exactly
- * — no guessed names needed fixing here. Only the "open to move" status set
- * was a guess; replaced with the real post-production, not-yet-delivered
- * stages read off EXPORT_STATUSES/LOCAL_STATUSES (logisticsStatus/schema.ts):
- * both pipelines share 'Under Production' → 'Under Packing' → 'Transportation'
- * as their production leg, and 'Transportation' is the first stage that's
- * actually trucking's to move; Local's pipeline ends there before 'Delivered',
- * Export's continues through the sea leg.
- *
- * UPDATE: Logistics orders are now multi-item (see
- * features/logisticsStatus/schema.ts) — itemDetail/idm/exportNo no longer
- * live on the order header. Summarize across the first item plus a count,
- * same convention LogisticsStatusList.tsx uses.
- */
 function deriveFromLogistics(): TruckingRow[] {
   try {
     const rows = logisticsData.getLogisticsOrders() ?? []
-    const OPEN_TO_MOVE = new Set(['Transportation', 'Under Shipping Arrangement', 'At QFL', 'At Port', 'On Water'])
     return rows
-      .filter((r) => OPEN_TO_MOVE.has(r.status))
+      .filter((r) => r.sentToTrucking && !findTakenJobBySourceRef(r.systemId))
       .map((r): TruckingRow => {
         const first = r.items[0]
         const more = r.items.length - 1
         const itemSummary = first ? `${first.itemDetail}${more > 0 ? ` +${more} more` : ''}` : 'No items'
         const ref = first?.idm || first?.exportNo || r.systemId
+        const packingWorks = r.packages.find((p) => p.packingWorks)?.packingWorks
         return {
           systemId: `TR-LOG-${r.systemId}`,
           source: 'from-logistics',
           sourceRef: r.systemId,
           movementType: 'Outbound',
-          executionDate: r.gateOutDate || r.dispatchNoteDate,
-          transporterName: r.transporterName,
+          executionDate: r.gateOutDate,
           itemDetails: itemSummary,
-          pickup: r.originFactory || r.originCity,
-          destination: r.destination || r.originCountry,
+          pickup: packingWorks || (r.orderType === 'Local' ? r.originCity : undefined),
+          destination: r.orderType === 'Export' ? r.pol : undefined,
           referenceNo: ref,
           vehicles: [],
           open: true,
@@ -211,21 +220,24 @@ function deriveFromLogistics(): TruckingRow[] {
  * `transporterName`, `itemSummary`, `supplierOrigin`, `works`, or `reference`
  * — those guessed field names have been dropped/repointed below to the real
  * ones (`items[0].itemName`/`requisitionSummary`, `origin`, `branch`,
- * `systemId`). "Past Under Production" is now an index comparison against the
- * real ordered CONSIGNMENT_STATUSES (importsStatus/schema.ts) rather than a
- * hardcoded name set, per the instruction.
+ * `systemId`). "Past Under Production" is an index comparison against the
+ * real ordered CONSIGNMENT_STATUSES (importsStatus/schema.ts).
  *
- * UPDATE: ConsignmentRow now has a real `incoterm` field (see
- * importsStatus/schema.ts's INCOTERMS + Step1Consignment.tsx). The former
- * placeholder heuristic — which always evaluated false, since no such field
- * existed yet — is replaced with a direct check.
+ * Excludes any consignment that already has a taken job — same
+ * never-shows-twice guarantee as deriveFromLogistics above. Imports has no
+ * explicit "sent to trucking" flag of its own; the taken-job lookup alone is
+ * enough to prevent a duplicate, so nothing was added to importsStatus.
  */
 function deriveFromImportsFob(): TruckingRow[] {
   try {
     const rows = importsData.getConsignments() ?? []
     const productionIdx = CONSIGNMENT_STATUSES.indexOf('Under Production')
     return rows
-      .filter((r) => CONSIGNMENT_STATUSES.indexOf(r.status) > productionIdx && r.incoterm === 'FOB')
+      .filter((r) =>
+        CONSIGNMENT_STATUSES.indexOf(r.status) > productionIdx &&
+        r.incoterm === 'FOB' &&
+        !findTakenJobBySourceRef(r.systemId),
+      )
       .map((r): TruckingRow => ({
         systemId: `TR-IMP-${r.systemId}`,
         source: 'from-import-fob',
@@ -243,9 +255,50 @@ function deriveFromImportsFob(): TruckingRow[] {
   }
 }
 
+/**
+ * Export orders needing outbound trucking to the port. An export shipment has
+ * to be trucked from the factory/QFL to the port of loading before it can
+ * sail — that inland leg is Trucking's job, the mirror of the inbound leg it
+ * does for FOB imports. Sourced from Logistics export orders that have reached
+ * a stage where the goods are ready to move but not yet on the water. Distinct
+ * from the sentToTrucking-gated delivery leg above: this is the port leg, not
+ * the customer-delivery leg, and (per the confirmed scope) does not get a
+ * Take Action button — it stays always-live, no accept step.
+ */
+function deriveFromExports(): TruckingRow[] {
+  try {
+    const rows = logisticsData.getLogisticsOrders() ?? []
+    // Export orders that are packed/ready and heading for the port, but not
+    // yet sailed — those are the ones needing the truck to the port.
+    const READY_TO_PORT = new Set(['Under Packing', 'Transportation', 'Under Shipping Arrangement', 'At QFL'])
+    return rows
+      .filter((r) => r.orderType === 'Export' && READY_TO_PORT.has(r.status))
+      .map((r): TruckingRow => {
+        const first = r.items[0]
+        const more = r.items.length - 1
+        const itemSummary = first ? `${first.itemDetail}${more > 0 ? ` +${more} more` : ''}` : 'No items'
+        const packingWorks = r.packages.find((p) => p.packingWorks)?.packingWorks
+        return {
+          systemId: `TR-EXP-${r.systemId}`,
+          source: 'from-export',
+          sourceRef: r.systemId,
+          movementType: 'Outbound',
+          itemDetails: itemSummary,
+          pickup: packingWorks || 'Factory',
+          destination: r.pol || 'Port of loading',
+          referenceNo: first?.exportNo || r.systemId,
+          vehicles: [],
+          open: true,
+        }
+      })
+  } catch {
+    return []
+  }
+}
+
 /** The live union of derived open requests (never copied). */
 export function deriveOpenRequests(): TruckingRow[] {
-  return [...deriveFromLogistics(), ...deriveFromImportsFob()]
+  return [...deriveFromLogistics(), ...deriveFromImportsFob(), ...deriveFromExports()]
 }
 
 // --- public API (mirrors logisticsStatusData) ------------------------------
@@ -268,7 +321,8 @@ export function getTruckingJobs(filters: TruckingFilters = {}): TruckingRow[] {
   // updateTruckingJob so its data survives the /new → /:id/edit/:step
   // remount) lives only in EDITS until Submit — applyEdits only maps over
   // MANUAL_JOBS, so without this it would be invisible here even though
-  // getTruckingJob() is expected to find it mid-creation.
+  // getTruckingJob() is expected to find it mid-creation. Taken jobs (see
+  // takeAction()) live here too, for the same reason.
   const knownIds = new Set([...manual, ...derived].map((r) => r.systemId))
   const inProgressDrafts = [...EDITS.values()].filter((r) => !knownIds.has(r.systemId))
   let all = [...derived, ...manual, ...inProgressDrafts]
@@ -306,7 +360,9 @@ export function getTruckingJob(id: string): TruckingDraft | undefined {
  * step's remount. The wizard uses this (not "does getTruckingJob find it")
  * to decide new-record-creation-mode vs. genuine-edit-mode: a mid-creation
  * draft must still behave like new mode (sequential Next-validation, no
- * free stepper jumps, no unsaved-changes guard) all the way to Submit.
+ * free stepper jumps, no unsaved-changes guard) all the way to Submit —
+ * which is also the correct behaviour for a freshly-taken job's first save,
+ * since it hasn't been through Submit yet either.
  */
 export function isKnownRecord(systemId: string): boolean {
   return MANUAL_JOBS.some((r) => r.systemId === systemId) || deriveOpenRequests().some((r) => r.systemId === systemId)
@@ -322,6 +378,104 @@ export function updateTruckingJob(systemId: string, data: TruckingDraft): void {
   EDITS.set(systemId, merged)
 }
 
+/**
+ * TAKE ACTION: converts a still-open, live-derived request into an
+ * independent, persisted TruckingDraft. Builds a takenSnapshot from the
+ * source record's current items/packages (package-wise for a Logistics
+ * order that has packages, item-wise otherwise), mints a new id, and stores
+ * the resulting draft directly into EDITS via updateTruckingJob — which is
+ * exactly what makes findTakenJobBySourceRef() start finding it, and
+ * therefore what makes deriveFromLogistics/deriveFromImportsFob stop
+ * re-deriving the source as a duplicate open row from this point on.
+ *
+ * Returns the new job's systemId so the caller can navigate straight into
+ * the wizard, pre-filled.
+ */
+export function takeAction(sourceType: 'from-logistics' | 'from-import-fob', sourceId: string): string {
+  const newId = crypto.randomUUID()
+  let snapshot: TakenSourceSnapshot[] = []
+  let itemDetails = 'No items'
+  let referenceNo = sourceId
+  const movementType: TruckingDraft['movementType'] = sourceType === 'from-import-fob' ? 'Inbound' : 'Outbound'
+
+  if (sourceType === 'from-logistics') {
+    const order = logisticsData.getLogisticsOrder(sourceId)
+    if (order) {
+      snapshot = order.packages.length
+        ? order.packages.map((pkg, i) => ({
+            sourcePackageId: pkg.id,
+            label: `Package ${i + 1}${pkg.colourCode ? ` — ${pkg.colourCode}` : ''}`,
+            itemDetails: pkg.allocations
+              .map((a) => order.items.find((it) => it.id === a.itemId)?.itemDetail)
+              .filter(Boolean)
+              .join(', '),
+            quantity: pkg.allocations.reduce((s, a) => s + (a.quantity ?? 0), 0),
+            weight: pkg.grossWeight,
+          }))
+        : order.items.map((it) => ({
+            label: it.itemDetail || 'Item',
+            itemDetails: it.itemDetail,
+            quantity: it.quantity,
+            weight: it.grossWeight,
+          }))
+      const first = order.items[0]
+      const more = order.items.length - 1
+      itemDetails = first ? `${first.itemDetail}${more > 0 ? ` +${more} more` : ''}` : 'No items'
+      referenceNo = first?.idm || first?.exportNo || sourceId
+    }
+  } else {
+    const consignment = importsData.getConsignment(sourceId)
+    if (consignment) {
+      snapshot = consignment.items.map((it) => ({
+        label: it.itemName || 'Item',
+        itemDetails: it.itemName,
+        quantity: it.quantity,
+        weight: undefined,
+      }))
+      const first = consignment.items[0]
+      const more = consignment.items.length - 1
+      itemDetails = first ? `${first.itemName}${more > 0 ? ` +${more} more` : ''}` : 'No items'
+      referenceNo = sourceId
+    }
+  }
+
+  const draft: TruckingDraft = {
+    ...DRAFT_DEFAULT_VALUES,
+    movementType,
+    source: sourceType,
+    sourceRef: sourceId,
+    takenAt: new Date().toISOString(),
+    takenSnapshot: snapshot,
+    itemDetails,
+    referenceNo,
+    vehicles: [emptyVehicle()],
+  }
+  updateTruckingJob(newId, draft)
+  return newId
+}
+
+/**
+ * Read-through summary for Logistics Status's Step 5 "Trucking progress"
+ * panel — the mirror direction of deriveFromLogistics above (Logistics
+ * reading Trucking, instead of the other way round), owned here so the
+ * import graph between the two stores stays one-directional.
+ */
+export function getTruckingReadthrough(logisticsOrderId: string): TruckingReadthrough | null {
+  const taken = findTakenJobBySourceRef(logisticsOrderId)
+  if (taken) {
+    return {
+      truckingJobId: taken.systemId,
+      transporterName: taken.transporterName,
+      vehicleCount: taken.vehicles.length,
+      trackingRollupLabel: rollupLabel(taken),
+      taken: true,
+    }
+  }
+  const stillOpen = deriveFromLogistics().some((r) => r.sourceRef === logisticsOrderId)
+  if (!stillOpen) return null
+  return { truckingJobId: '', vehicleCount: 0, trackingRollupLabel: 'No vehicles', taken: false }
+}
+
 // --- derived helpers for list/detail ---------------------------------------
 
 /** Bridge a stored row to the wizard's draft shape. */
@@ -329,6 +483,9 @@ export function rowToDraft(row: TruckingRow): TruckingDraft {
   return {
     movementType: row.movementType,
     source: row.source,
+    sourceRef: row.sourceRef,
+    takenAt: row.takenAt,
+    takenSnapshot: row.takenSnapshot ?? [],
     executionDate: row.executionDate ?? '',
     transporterName: row.transporterName ?? '',
     shiftingType: row.shiftingType ?? 'Regular',
@@ -357,5 +514,5 @@ export function rowGrossWeight(row: TruckingRow): number {
 
 /** Source provenance tag for the list. */
 export function sourceLabel(source: TruckingSource): string {
-  return source === 'from-logistics' ? 'Logistics' : source === 'from-import-fob' ? 'Import FOB' : 'Manual'
+  return source === 'from-logistics' ? 'Logistics' : source === 'from-import-fob' ? 'Import FOB' : source === 'from-export' ? 'Export' : 'Manual'
 }
