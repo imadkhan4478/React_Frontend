@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { StatusBadge } from '@/components/StatusBadge'
 import { money, shortDate } from './format'
 import { ITEMS, SUPPLIERS, BRANCHES, ITEM_CATEGORIES } from './mockData/shared'
-import { getPurchases } from './mockData/purchases'
+import { getPurchases, purchaseMaterialList } from './mockData/purchases'
 import { getImports } from './mockData/imports'
 import { getStock } from './mockData/inventory'
 import { getShipments } from './mockData/logistics'
@@ -211,5 +211,49 @@ export function optionsFor(rows: ReportRow[], key: string, fallback: readonly st
   const present = new Set(rows.map((r) => r[key]).filter((v): v is string => typeof v === 'string'))
   return fallback.filter((v) => present.has(v))
 }
+
+// Warehouse staff search these by the colloquial trade name "Shaft" instead
+// of the item's real name — a plain Item Name search for "shaft" would find
+// nothing. Give them their own picker instead of teaching search a synonym:
+// SHAFT_ITEMS are pulled out of the general Item Name list so each control
+// has one clear job, and both feed the same underlying `item` field (see
+// applyFilters) so picking from either narrows the same column.
+export const SHAFT_ITEMS = ITEMS.filter((i) => i.endsWith('Bar'))
+export const NON_SHAFT_ITEMS = ITEMS.filter((i) => !i.endsWith('Bar'))
+
+export interface ReportFilters {
+  item: string[]
+  shaft: string[]
+  supplier: string[]
+  material: string[]
+  branch: string[]
+  category: string[]
+}
+
+export const EMPTY_FILTERS: ReportFilters = { item: [], shaft: [], supplier: [], material: [], branch: [], category: [] }
+
+function passesMulti(row: ReportRow, key: string, selected: string[]): boolean {
+  if (selected.length === 0) return true
+  const v = row[key]
+  if (v === undefined) return true
+  return selected.includes(v as string)
+}
+
+/** Shared by the live builder and every saved-report download, so the two
+ * paths can never drift apart on what a given filter set actually means. */
+export function applyFilters(rows: ReportRow[], filters: ReportFilters): ReportRow[] {
+  const itemAllow = [...filters.item, ...filters.shaft]
+  return rows.filter((row) => {
+    if (itemAllow.length > 0 && typeof row.item === 'string' && !itemAllow.includes(row.item)) return false
+    return (
+      passesMulti(row, 'supplier', filters.supplier) &&
+      passesMulti(row, 'material', filters.material) &&
+      passesMulti(row, 'branch', filters.branch) &&
+      passesMulti(row, 'category', filters.category)
+    )
+  })
+}
+
+export const MATERIALS = purchaseMaterialList
 
 export { ITEMS, SUPPLIERS, BRANCHES, ITEM_CATEGORIES }

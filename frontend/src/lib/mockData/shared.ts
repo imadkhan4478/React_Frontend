@@ -40,6 +40,9 @@ export const SUPPLIERS = [
 ] as const
 export const ITEMS = [
   'Tap Handle 1/2"', 'Thread Gauge', 'Bolt Tensioner', 'Plain Washer M16', 'Three Jaws Chuck',
+  // Warehouse staff search these by the colloquial name "Shaft" rather than
+  // their proper item names — see reportBuilder's SHAFT_ITEMS.
+  'Round Bar', 'Hex Bar', 'Square Bar',
 ] as const
 export const CUSTOMERS = [
   'Bestway Cement', 'Maple Leaf Cement', 'Fauji Cement', 'DG Khan Cement',
