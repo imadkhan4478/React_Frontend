@@ -1,38 +1,42 @@
 import { z } from 'zod'
 
 /**
- * One zod object per wizard step, merged into a single draft schema. The
- * wizard validates only the current step's fields via `trigger(fields)` on
- * each Next click, so a schema-level `required` on a later step's field never
- * blocks an earlier one — see wizard/LogisticsStatusWizard.tsx.
+ * Logistics Status schema — step layout (5 steps):
+ *   1. Order Details — header (department, order type, origin, customer, MO no.,
+ *      batch no., incoterm) + item lines (simplified: no IDM/exportNo/batchNo)
+ *   2. Packing       — multi-package with item-quantity allocation (including
+ *                      cross-batch references within the same MO group)
+ *   3. Shipping      — ports, containers, sailing dates
+ *   4. Expenditures  — cost lines including container detention
+ *   5. Status        — pipeline status, marketing delay, remarks feed, trucking handoff
  *
- * STEP LAYOUT (5 steps, Packing replaces the old Transportation step):
- *   1. Order        — header (order type, origin, customer, MO no., incoterm) + item lines
- *   2. Packing       — one or more packages, each with its own cost/status/
- *                      weight, plus a per-package allocation of item quantities
- *   3. Shipping      — ports, containers, sailing dates (Export-heavy, unchanged shape)
- *   4. Expenditures  — cost lines (unchanged shape)
- *   5. Status        — order status, marketing delay, trucking handoff readout,
- *                      and the full remarks feed (user-entered + system-generated)
+ * KEY CONCEPTS:
  *
- * TRANSPORTATION IS NO LONGER A LOGISTICS STEP. Per the confirmed design, an
- * order moves to Trucking via a "Send to Trucking" checkbox on Step 5. Once
- * checked, the order becomes an open request in Trucking Status; Logistics
- * only ever shows a READ-THROUGH summary of the trucking job's progress here
- * (transporter, vehicle/package count, tracking rollup) — it never edits
- * trucking fields directly. See sentToTrucking / TruckingReadthrough below.
+ * DEPARTMENT (Cement / Sugar / General) is on the header and drives the merged
+ * "Order Type" display in the list (e.g. "Cement Export", "General Local").
  *
- * PER-ITEM RFD AUDIT TRAIL: plannedRfdDate and actualRfdDate can both be
- * changed after the fact, and every change must be logged — who changed it,
- * when, and what the previous value was — surfaced as system-generated
- * remarks alongside the user's own. This lives on rfdHistory, one entry per
- * change, keyed to the item it belongs to (confirmed: per item, not per
- * order, since each item can genuinely run to a different production
- * timeline within the same order).
+ * BATCH SYSTEM: MO number is a grouping key, not a unique order ID. When
+ * someone enters an MO that already exists, the system auto-creates it as
+ * Batch 2 (etc.). Each batch has its own shipping/packing/expenditures/status.
+ * batchNo is auto-generated but user-renameable. Batches within the same MO
+ * can cross-reference each other's items in their package allocations — items
+ * are SHARED (pull/reference), never copied.
+ *
+ * ITEM LINES are simplified: no IDM, export number, or batch number (those
+ * belonged to the old design). Items carry Job#, item detail, quantity, unit
+ * weight (input), gross weight (input), and RFD dates with audit trail.
+ * Net weight = quantity × unitWeight, always derived.
+ *
+ * TRANSPORTATION is not a Logistics step. Orders hand off to Trucking via
+ * "Send to Trucking" on Step 5; Logistics shows a read-through of trucking
+ * progress afterward.
  */
 
 export const ORDER_TYPES = ['Export', 'Local'] as const
 export type OrderType = (typeof ORDER_TYPES)[number]
+
+export const DEPARTMENTS = ['Cement', 'Sugar', 'General'] as const
+export type Department = (typeof DEPARTMENTS)[number]
 
 export const INCOTERMS = ['FOB', 'CIF', 'CFR', 'EXW', 'DAP'] as const
 export type Incoterm = (typeof INCOTERMS)[number]
@@ -45,71 +49,57 @@ const optionalNumber = z.preprocess(
 
 // --- Per-item RFD change audit ---------------------------------------------
 
-/**
- * One logged change to an item's planned or actual RFD date. Append-only —
- * never edited or removed once written, except that an admin may edit the
- * REMARK text of an existing entry (never the date values themselves, and
- * never who/when). This mirrors importsStatus's ETA/status-history-as-events
- * pattern: history is a fact record, not a mutable field.
- */
 export const rfdChangeEventSchema = z.object({
   id: z.string(),
   field: z.enum(['plannedRfdDate', 'actualRfdDate']),
-  previousValue: z.string().optional(), // '' / undefined = was not set before
+  previousValue: z.string().optional(),
   newValue: z.string(),
-  changedBy: z.string(), // username/display name of who made the change
-  changedAt: z.string(), // ISO datetime
-  /** User-entered note attached to this specific change. Only an admin may
-   *  edit this after the fact (see canEditRemark in the data layer) — the
-   *  date/who/when fields themselves are never editable by anyone. */
+  changedBy: z.string(),
+  changedAt: z.string(),
   remark: z.string().optional(),
 })
 export type RfdChangeEvent = z.infer<typeof rfdChangeEventSchema>
 
-// --- Step 1: Order item lines ----------------------------------------------
+// --- Step 1: Order item lines (simplified) ---------------------------------
 
 /**
- * One line per item in the order. Export no. sits HERE, not on the header —
- * a single order can bundle items filed under different exports.
- *
- * netWeight is DERIVED (quantity × unitWeight) — see totalNetWeight/
- * itemNetWeight below — never a field the user types into directly. It's
- * kept out of the persisted schema for that reason; only unitWeight and
- * grossWeight are real inputs.
+ * One line per item. Simplified from the previous version: IDM, export number,
+ * and batch number are removed. Net weight is DERIVED (quantity × unitWeight),
+ * never a direct input.
  */
 export const logisticsItemSchema = z.object({
   id: z.string(),
   jobNo: z.string().default(''),
   itemDetail: z.string().default(''),
   quantity: optionalNumber,
-  unitWeight: optionalNumber, // per-unit weight; netWeight = quantity × unitWeight, derived
+  unitWeight: optionalNumber,
   grossWeight: optionalNumber,
-  idm: z.string().default(''),
-  /** Export orders only. Independent per item. */
-  exportNo: z.string().optional(),
-  batchNo: z.string().optional(),
-  plannedRfdDate: z.string().optional(), // ISO yyyy-mm-dd
+  plannedRfdDate: z.string().optional(),
   actualRfdDate: z.string().optional(),
-  /** Append-only log of every change to either RFD date on this item. */
   rfdHistory: z.array(rfdChangeEventSchema).default([]),
 })
 export type LogisticsItem = z.infer<typeof logisticsItemSchema>
 
 export const emptyItem = (id: string): LogisticsItem => ({
-  id, jobNo: '', itemDetail: '', quantity: undefined, unitWeight: undefined, grossWeight: undefined,
-  idm: '', exportNo: '', batchNo: '', plannedRfdDate: '', actualRfdDate: '', rfdHistory: [],
+  id, jobNo: '', itemDetail: '', quantity: undefined, unitWeight: undefined,
+  grossWeight: undefined, plannedRfdDate: '', actualRfdDate: '', rfdHistory: [],
 })
 
 // --- Step 1: Order details --------------------------------------------------
 export const consignmentSchema = z
   .object({
     orderType: z.enum(ORDER_TYPES),
-    // Origin is a country for exports, and city + province for local orders.
+    department: z.enum(DEPARTMENTS),
     originCountry: z.string().optional(),
     originCity: z.string().optional(),
     originProvince: z.string().optional(),
     customerName: z.string().min(1, 'Customer name is required'),
-    moNo: z.string().optional(), // MO (Manufacturing/Marketing Order) number
+    moNo: z.string().optional(),
+    /** Auto-generated when the same MO number already exists in the system —
+     *  first order with an MO = Batch 1, second = Batch 2, etc. User can
+     *  rename the label but not the underlying sequence. */
+    batchNo: z.number().int().min(1).default(1),
+    batchLabel: z.string().optional(), // user-renameable display label, defaults to "Batch {batchNo}"
     incoterm: z.enum(INCOTERMS).optional().or(z.literal('')),
     items: z.array(logisticsItemSchema).default([]),
   })
@@ -136,19 +126,13 @@ export const consignmentSchema = z
       if (item.quantity === undefined || item.quantity <= 0) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['items', i, 'quantity'], message: 'Quantity must be greater than 0' })
       }
-      if (!item.idm) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['items', i, 'idm'], message: 'IDM is required' })
-      }
-      if (val.orderType === 'Export' && !item.exportNo?.trim()) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['items', i, 'exportNo'], message: 'Export no. is required for exports' })
-      }
     })
   })
 
-// --- Step 2: Packing (replaces Transportation) ------------------------------
+// --- Step 2: Packing --------------------------------------------------------
 
 export const PACKING_STATUSES = [
-  'Sourcing packing material',
+  'Packing under manufacturing',
   'Under Packing',
   'Under Paint',
   'Under Final Packing',
@@ -157,34 +141,34 @@ export const PACKING_STATUSES = [
 export type PackingStatus = (typeof PACKING_STATUSES)[number]
 
 /**
- * One line per allocation of an item's quantity into a package — a package
- * routinely holds partial quantities from more than one item, so this is a
- * many-to-many join, not a single itemId per package.
+ * One allocation of an item's quantity into a package. Supports CROSS-BATCH
+ * references: a package in Batch 2 can allocate items that belong to Batch 1
+ * within the same MO group — the items are shared, not copied.
+ *
+ * When sourceOrderId equals the current order's own systemId, the item is
+ * local. When it differs, it's a cross-batch reference to a sibling batch's
+ * item under the same MO.
  */
 export const packageAllocationSchema = z.object({
   id: z.string(),
-  itemId: z.string(), // references LogisticsItem.id
-  quantity: optionalNumber, // quantity of that item placed in this package
+  itemId: z.string(),
+  /** The order (batch) that owns this item. Same as this order's id for local
+   *  items; a different order's id for cross-batch references. */
+  sourceOrderId: z.string(),
+  quantity: optionalNumber,
 })
 export type PackageAllocation = z.infer<typeof packageAllocationSchema>
 
-/**
- * One physical package. An export number can have several packages; this
- * mirrors the item/container arrays elsewhere in this schema (repeating
- * useFieldArray panel, not a flat field).
- */
 export const logisticsPackageSchema = z.object({
   id: z.string(),
   colourCode: z.string().optional(),
-  packingWorks: z.string().optional(), // factory where packing is done
+  packingWorks: z.string().optional(),
   packingReadyDate: z.string().optional(),
   packingDate: z.string().optional(),
-  // packingDelay is derived: (planned or actual RFD) − packingDate — never keyed in.
   quotedPackingCost: optionalNumber,
   actualPackingCost: optionalNumber,
-  // savings is derived: quoted − actual — never keyed in.
   grossWeight: optionalNumber,
-  status: z.enum(PACKING_STATUSES).default('Sourcing packing material'),
+  status: z.enum(PACKING_STATUSES).default('Packing under manufacturing'),
   allocations: z.array(packageAllocationSchema).default([]),
 })
 export type LogisticsPackage = z.infer<typeof logisticsPackageSchema>
@@ -192,7 +176,7 @@ export type LogisticsPackage = z.infer<typeof logisticsPackageSchema>
 export const emptyPackage = (id: string): LogisticsPackage => ({
   id, colourCode: '', packingWorks: '', packingReadyDate: '', packingDate: '',
   quotedPackingCost: undefined, actualPackingCost: undefined, grossWeight: undefined,
-  status: 'Sourcing packing material', allocations: [],
+  status: 'Packing under manufacturing', allocations: [],
 })
 
 export const packingSchema = z.object({
@@ -200,6 +184,7 @@ export const packingSchema = z.object({
 })
 
 // --- Step 3: Shipping --------------------------------------------------------
+
 export const logisticsContainerSchema = z.object({
   id: z.string(),
   containerNo: z.string().optional(),
@@ -220,13 +205,17 @@ export const shippingSchema = z.object({
   etdSailingDate: z.string().optional(),
   croArrivalDate: z.string().optional(),
   actualArrivalDate: z.string().optional(),
-  // arrivalDelayDays is derived (actual arrival - CRO arrival) and never keyed in.
 })
 
 // --- Step 4: Expenditures ----------------------------------------------------
+
 export const expendituresSchema = z.object({
+  // Shared
   packingCost: z.number().min(0).optional(),
   transportationCharges: z.number().min(0).optional(),
+  /** Container detention cost — applies to any order with containers. */
+  containerDetention: z.number().min(0).optional(),
+  // Export-only
   insurance: z.number().min(0).optional(),
   truckingLhrToKhi: z.number().min(0).optional(),
   fumigationCost: z.number().min(0).optional(),
@@ -241,67 +230,43 @@ export const expendituresSchema = z.object({
 
 // --- Step 5: Status ----------------------------------------------------------
 
-/**
- * A single remarks-feed entry shown on the Status step. Both user-entered and
- * system-generated entries share this shape so they render in one
- * chronological feed; `system: true` entries are never editable by anyone
- * except an admin correcting the attached note (see canEditRemark).
- */
 export const remarkEntrySchema = z.object({
   id: z.string(),
   text: z.string(),
   authoredBy: z.string(),
-  authoredAt: z.string(), // ISO datetime
-  system: z.boolean().default(false), // true = auto-generated from an RFD/date change
+  authoredAt: z.string(),
+  system: z.boolean().default(false),
 })
 export type RemarkEntry = z.infer<typeof remarkEntrySchema>
 
 export const statusSchema = z.object({
   status: z.string().min(1, 'Status is required'),
-  /** Chronological feed: every user-entered remark ever saved, plus one
-   *  system-generated entry per RFD/date change, never deleted — only an
-   *  admin may edit an existing entry's text. */
   remarksLog: z.array(remarkEntrySchema).default([]),
-  /** Gate-out date used only for the marketing-delay calculation on this
-   *  step; the field itself used to live on the removed Transportation step.
-   *  Optional — if absent, marketing delay falls back to (packing date − today). */
   gateOutDate: z.string().optional(),
-  /** Sending to Trucking is a one-way handoff: once true, the order becomes
-   *  an open request in Trucking Status. Flipping it back off does not pull
-   *  the request back — that's a real workflow action, not a form toggle a
-   *  user can silently undo (enforced in the wizard, not here). */
   sentToTrucking: z.boolean().default(false),
 })
 
-/**
- * Read-through summary of the linked Trucking job, shown (never edited) once
- * sentToTrucking is true. This is NOT part of the persisted draft — it's
- * computed by the data layer at read time from the Trucking store, the same
- * "live, never copied" convention Trucking itself uses for its own derived
- * rows, just mirrored back onto Logistics.
- */
 export interface TruckingReadthrough {
   truckingJobId: string
   transporterName?: string
   vehicleCount: number
-  trackingRollupLabel: string // e.g. "3/5 delivered · Loading"
-  taken: boolean // true once a Trucking operator has clicked Take Action
+  trackingRollupLabel: string
+  taken: boolean
 }
 
-/**
- * The wizard needs one flat object for react-hook-form. `consignmentSchema`
- * is a ZodEffects (superRefine), so the draft is composed from the raw shapes
- * and the cross-field refinement re-applied. Step-level validation uses the
- * per-step schemas above via `trigger`.
- */
+// --- Draft schema (flat for react-hook-form) ---------------------------------
+
 export const consignmentDraftSchema = z
   .object({
     orderType: z.enum(ORDER_TYPES),
+    department: z.enum(DEPARTMENTS),
     originCountry: z.string().optional(),
     originCity: z.string().optional(),
     originProvince: z.string().optional(),
     customerName: z.string().min(1, 'Customer name is required'),
     moNo: z.string().optional(),
+    batchNo: z.number().int().min(1).default(1),
+    batchLabel: z.string().optional(),
     incoterm: z.enum(INCOTERMS).optional().or(z.literal('')),
     items: z.array(logisticsItemSchema).default([]),
   })
@@ -314,11 +279,14 @@ export type LogisticsDraft = z.infer<typeof consignmentDraftSchema>
 
 export const DRAFT_DEFAULT_VALUES: LogisticsDraft = {
   orderType: 'Export',
+  department: 'General',
   originCountry: '',
   originCity: '',
   originProvince: '',
   customerName: '',
   moNo: '',
+  batchNo: 1,
+  batchLabel: '',
   incoterm: undefined,
   items: [emptyItem('item-1')],
   packages: [],
@@ -334,6 +302,7 @@ export const DRAFT_DEFAULT_VALUES: LogisticsDraft = {
   actualArrivalDate: '',
   packingCost: 0,
   transportationCharges: 0,
+  containerDetention: 0,
   insurance: 0,
   truckingLhrToKhi: 0,
   fumigationCost: 0,
@@ -357,38 +326,35 @@ export interface WizardStepDef {
   fields: (keyof LogisticsDraft)[]
 }
 
-// Five steps: Order, Packing, Shipping, Expenditures, Status.
 export const WIZARD_STEPS: WizardStepDef[] = [
   {
     step: 1,
     key: 'order',
     label: 'Order Details',
-    fields: ['orderType', 'originCountry', 'originCity', 'originProvince', 'customerName', 'moNo', 'incoterm', 'items'],
+    fields: ['orderType', 'department', 'originCountry', 'originCity', 'originProvince',
+      'customerName', 'moNo', 'batchNo', 'batchLabel', 'incoterm', 'items'],
   },
   { step: 2, key: 'packing', label: 'Packing', fields: ['packages'] },
   {
     step: 3,
     key: 'shipping',
     label: 'Shipping',
-    fields: [
-      'containers', 'pol', 'pod', 'shippingLine', 'clearingAgent',
-      'bookingNo', 'portInDate', 'etdSailingDate', 'croArrivalDate', 'actualArrivalDate',
-    ],
+    fields: ['containers', 'pol', 'pod', 'shippingLine', 'clearingAgent',
+      'bookingNo', 'portInDate', 'etdSailingDate', 'croArrivalDate', 'actualArrivalDate'],
   },
   {
     step: 4,
     key: 'expenditures',
     label: 'Expenditures',
-    fields: [
-      'packingCost', 'transportationCharges', 'insurance', 'truckingLhrToKhi', 'fumigationCost',
-      'lashing', 'qflCharges', 'qflContainerMovement', 'customClearanceCharges', 'portCharges',
-      'dhlCharges', 'seaAirFreight',
-    ],
+    fields: ['packingCost', 'transportationCharges', 'containerDetention', 'insurance',
+      'truckingLhrToKhi', 'fumigationCost', 'lashing', 'qflCharges', 'qflContainerMovement',
+      'customClearanceCharges', 'portCharges', 'dhlCharges', 'seaAirFreight'],
   },
   { step: 5, key: 'status', label: 'Status', fields: ['status', 'remarksLog', 'gateOutDate', 'sentToTrucking'] },
 ]
 
 // --- Status choices ----------------------------------------------------------
+
 export const EXPORT_STATUSES = [
   'Under Production',
   'Under Packing',
@@ -411,7 +377,7 @@ export function statusesFor(orderType: OrderType): readonly string[] {
   return orderType === 'Export' ? EXPORT_STATUSES : LOCAL_STATUSES
 }
 
-// --- Derived-value helpers (calculated, never keyed in) ----------------------
+// --- Derived-value helpers ---------------------------------------------------
 
 export function daysBetween(fromISO?: string, toISO?: string): number | null {
   if (!fromISO || !toISO) return null
@@ -421,7 +387,7 @@ export function daysBetween(fromISO?: string, toISO?: string): number | null {
   return Math.round((b - a) / 86_400_000)
 }
 
-/** netWeight for one item — DERIVED, quantity × unitWeight. Never stored. */
+/** Net weight for one item — DERIVED, quantity × unitWeight. */
 export function itemNetWeight(item: Pick<LogisticsItem, 'quantity' | 'unitWeight'>): number {
   return (item.quantity ?? 0) * (item.unitWeight ?? 0)
 }
@@ -429,7 +395,6 @@ export function itemNetWeight(item: Pick<LogisticsItem, 'quantity' | 'unitWeight
 export const totalQuantity = (items: LogisticsItem[]) =>
   items.reduce((s, it) => s + (it.quantity ?? 0), 0)
 
-/** Total net weight across every item — sums the derived per-item net weight. */
 export const totalNetWeight = (items: LogisticsItem[]) =>
   items.reduce((s, it) => s + itemNetWeight(it), 0)
 
@@ -442,26 +407,55 @@ export function ratePerWeight(actualFreight: number | undefined, items: Logistic
   return actualFreight / gross
 }
 
-export const exportNumbers = (items: LogisticsItem[]) =>
-  [...new Set(items.map((it) => it.exportNo?.trim()).filter((x): x is string => !!x))]
+/** Merged order type label for the list: "Cement Export", "General Local", etc. */
+export function orderTypeLabel(department: Department, orderType: OrderType): string {
+  return `${department} ${orderType}`
+}
 
-export function itemPendingFields(item: LogisticsItem, orderType: OrderType): string[] {
+/** All job numbers across items, used for the "visible on hover" list column. */
+export const jobNumbers = (items: LogisticsItem[]) =>
+  items.map((it) => it.jobNo).filter((j) => !!j)
+
+export function itemPendingFields(item: LogisticsItem): string[] {
   const out: string[] = []
   if (!item.itemDetail) out.push('Item detail')
   if (item.quantity === undefined) out.push('Quantity')
-  if (!item.idm) out.push('IDM')
-  if (orderType === 'Export' && !item.exportNo) out.push('Export no.')
   return out
 }
 
+/** Display label for a batch, falling back to "Batch N". */
+export function batchDisplayLabel(batchNo: number, batchLabel?: string): string {
+  return batchLabel?.trim() || `Batch ${batchNo}`
+}
+
 /**
- * Marketing delay: packingDate − gateOutDate. If there's no gate-out date yet,
- * falls back to packingDate − today, so the metric is always meaningful even
- * before the order has a real gate-out date recorded (per the confirmed spec:
- * "if there is no gate out date then difference it with today").
- * Uses the LATEST packing date across all packages, since that's when the
- * order is actually packing-complete; null if there's no packing date at all.
+ * Given an MO number and the full list of orders in the system, returns the
+ * next batch number for a new order under that MO. Returns 1 if the MO
+ * doesn't exist yet. Used at creation time to auto-assign batchNo.
  */
+export function nextBatchNo(moNo: string, existingOrders: { moNo?: string; batchNo: number }[]): number {
+  if (!moNo) return 1
+  const siblings = existingOrders.filter((o) => o.moNo === moNo)
+  if (siblings.length === 0) return 1
+  return Math.max(...siblings.map((o) => o.batchNo)) + 1
+}
+
+/**
+ * Returns all items available for cross-batch allocation within the same MO
+ * group — items from sibling batches that share this order's MO number.
+ * Each item is returned with its source order id so the allocation can
+ * correctly reference the owner.
+ */
+export interface CrossBatchItem {
+  sourceOrderId: string
+  sourceBatchLabel: string
+  item: LogisticsItem
+}
+// The implementation of getCrossBatchItems lives in the data layer
+// (logisticsStatusData.ts) since it requires scanning the order store;
+// this interface defines the shape it returns so the Packing step can
+// type its props without importing the data module.
+
 export function marketingDelay(packages: LogisticsPackage[], gateOutDate?: string): number | null {
   const packingDates = packages.map((p) => p.packingDate).filter((d): d is string => !!d)
   if (packingDates.length === 0) return null
@@ -470,10 +464,6 @@ export function marketingDelay(packages: LogisticsPackage[], gateOutDate?: strin
   return daysBetween(reference, latest)
 }
 
-/** Packing delay for one package: (planned RFD, falling back to actual RFD,
- *  of the FIRST item allocated into it) − packingDate. A package can draw from
- *  several items with different RFDs; the earliest-allocated item's own
- *  timeline is what packing is actually racing against for that package. */
 export function packingDelay(pkg: LogisticsPackage, items: LogisticsItem[]): number | null {
   if (!pkg.packingDate || pkg.allocations.length === 0) return null
   const firstItem = items.find((it) => it.id === pkg.allocations[0].itemId)
@@ -482,41 +472,52 @@ export function packingDelay(pkg: LogisticsPackage, items: LogisticsItem[]): num
   return daysBetween(pkg.packingDate, rfd)
 }
 
-/** Quoted − actual packing cost. Null if either is missing. */
 export function packingSavings(pkg: LogisticsPackage): number | null {
   if (pkg.quotedPackingCost == null || pkg.actualPackingCost == null) return null
   return pkg.quotedPackingCost - pkg.actualPackingCost
 }
 
-/** For one item: quantity allocated so far across every package. */
+/** Quantity of one item allocated across ALL packages (local and cross-batch). */
 export function allocatedQuantity(itemId: string, packages: LogisticsPackage[]): number {
   return packages.reduce(
-    (sum, pkg) => sum + pkg.allocations.filter((a) => a.itemId === itemId).reduce((s, a) => s + (a.quantity ?? 0), 0),
+    (sum, pkg) => sum + pkg.allocations
+      .filter((a) => a.itemId === itemId)
+      .reduce((s, a) => s + (a.quantity ?? 0), 0),
     0,
   )
 }
 
-/** Outstanding (unallocated) quantity for one item — item quantity minus what
- *  has been placed into packages so far. Can be split across many packages. */
 export function outstandingQuantity(item: LogisticsItem, packages: LogisticsPackage[]): number {
   return (item.quantity ?? 0) - allocatedQuantity(item.id, packages)
 }
 
-/** Outstanding quantity for every item, keyed by item id — what the Packing
- *  step's bottom summary shows so the user can see at a glance what's left
- *  to place into a package. */
 export function outstandingByItem(items: LogisticsItem[], packages: LogisticsPackage[]): Record<string, number> {
   const out: Record<string, number> = {}
   for (const item of items) out[item.id] = outstandingQuantity(item, packages)
   return out
 }
 
-/**
- * Records one RFD date change on an item: appends the audit event and updates
- * the field itself. Called from the wizard's save path, never inline in a
- * render — this is a state transition, not a derived read. Returns the
- * updated item (does not mutate the input).
- */
+/** Total gross weight across all packages (for the Packing step footer). */
+export function totalPackageGrossWeight(packages: LogisticsPackage[]): number {
+  return packages.reduce((s, p) => s + (p.grossWeight ?? 0), 0)
+}
+
+/** Total net weight across all packages, computed from allocated item quantities × unit weights.
+ *  Requires resolving cross-batch items too; the allItems param should include both
+ *  local and cross-batch items to get the right unit weight. */
+export function totalPackageNetWeight(packages: LogisticsPackage[], allItems: LogisticsItem[]): number {
+  let total = 0
+  for (const pkg of packages) {
+    for (const alloc of pkg.allocations) {
+      const item = allItems.find((it) => it.id === alloc.itemId)
+      if (item) total += (alloc.quantity ?? 0) * (item.unitWeight ?? 0)
+    }
+  }
+  return total
+}
+
+// --- RFD audit helpers -------------------------------------------------------
+
 export function recordRfdChange(
   item: LogisticsItem,
   field: 'plannedRfdDate' | 'actualRfdDate',
@@ -524,7 +525,7 @@ export function recordRfdChange(
   changedBy: string,
 ): LogisticsItem {
   const previousValue = item[field]
-  if (previousValue === newValue) return item // no-op, nothing to log
+  if (previousValue === newValue) return item
   const event: RfdChangeEvent = {
     id: `rfd-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     field,
@@ -536,10 +537,6 @@ export function recordRfdChange(
   return { ...item, [field]: newValue, rfdHistory: [...item.rfdHistory, event] }
 }
 
-/** Renders one RFD change event into a human-readable system remark line,
- *  e.g. "Planned RFD changed from 2026-08-01 to 2026-08-10 by Usman on
- *  2026-07-30" — this is what feeds the Status step's system-generated
- *  remarks alongside the user's own entries. */
 export function formatRfdEvent(event: RfdChangeEvent, itemLabel: string): string {
   const fieldLabel = event.field === 'plannedRfdDate' ? 'Planned RFD' : 'Actual RFD'
   const from = event.previousValue || 'not set'
@@ -547,10 +544,6 @@ export function formatRfdEvent(event: RfdChangeEvent, itemLabel: string): string
   return `${itemLabel}: ${fieldLabel} changed from ${from} to ${event.newValue} by ${event.changedBy} on ${when}`
 }
 
-/** Every RFD change across every item, converted to remark entries, merged
- *  with the order's own remarksLog, and sorted chronologically — this is the
- *  single feed the Status step renders. System entries are marked so the UI
- *  can lock them from non-admin edits. */
 export function buildRemarksFeed(items: LogisticsItem[], remarksLog: RemarkEntry[]): RemarkEntry[] {
   const systemEntries: RemarkEntry[] = items.flatMap((item, i) =>
     item.rfdHistory.map((event) => ({
@@ -564,10 +557,6 @@ export function buildRemarksFeed(items: LogisticsItem[], remarksLog: RemarkEntry
   return [...remarksLog, ...systemEntries].sort((a, b) => a.authoredAt.localeCompare(b.authoredAt))
 }
 
-/** Only an admin may edit the text of an existing remark entry — the
- *  date/who/when on a system entry, and the authorship of a user entry, are
- *  never editable by anyone; this gate is specifically about correcting a
- *  remark's wording after the fact. */
 export function canEditRemark(userRole: string): boolean {
   return userRole === 'admin'
 }

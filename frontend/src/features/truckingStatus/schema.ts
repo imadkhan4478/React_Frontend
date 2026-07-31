@@ -12,7 +12,7 @@ import { z } from 'zod'
  * The one structural feature that sets Trucking apart is the header + repeating
  * vehicle array: one consignment can move on several trucks, and a number of
  * fields (vehicle no., packages, container, driver phone, weights, per-vehicle
- * tracking + builty) vary per vehicle. This mirrors the header + item-lines
+ * tracking) vary per vehicle. This mirrors the header + item-lines
  * pattern in importsStatus (useFieldArray).
  */
 
@@ -47,24 +47,30 @@ export const PAYMENT_STATUSES = ['Customer to pay', 'QG to pay'] as const
 export const VEHICLE_TRACKING_STATUSES = ['Going to load', 'Loading', 'On road', 'Delivered'] as const
 export type VehicleTrackingStatus = (typeof VEHICLE_TRACKING_STATUSES)[number]
 
-export const BUILTY_STATUSES = ['Yes', 'NA'] as const
+// BUILTY_STATUSES removed per confirmed design.
 
 // --- Per-vehicle line ------------------------------------------------------
 
 /**
  * Which Logistics packages (by id, from the source order's packages[]) are
- * riding on this vehicle. Confirmed design: Trucking sees a `from-logistics`
- * job PACKAGE-WISE, not as one undifferentiated blob — a package might fill a
- * whole vehicle on its own, or several small packages might share one truck,
- * so this is an allocation, the same many-to-many shape as Logistics' own
- * item–package allocation, one level up the chain. Empty for manual jobs and
- * for movement types with no package concept (e.g. plain Intrafactory moves
- * of loose goods) — purely additive, never required.
+ * riding on this vehicle. A package might fill a whole vehicle on its own, or
+ * several small packages might share one truck — many-to-many.
  */
 export const vehiclePackageRefSchema = z.object({
-  packageId: z.string(), // LogisticsPackage.id from the source order
+  packageId: z.string(),
 })
 export type VehiclePackageRef = z.infer<typeof vehiclePackageRefSchema>
+
+/**
+ * Which import consignments (by systemId from importsStatus) are riding on
+ * this vehicle. Confirmed: two or more import shipments CAN be moved on one
+ * vehicle, and one or more items can be moved on the same vehicle too — so
+ * this is an array, not a single ref.
+ */
+export const vehicleImportRefSchema = z.object({
+  consignmentId: z.string(), // importsStatus ConsignmentRow.systemId
+})
+export type VehicleImportRef = z.infer<typeof vehicleImportRefSchema>
 
 export const vehicleSchema = z.object({
   vehicleNumber: z.string().optional(),
@@ -73,14 +79,14 @@ export const vehicleSchema = z.object({
   driverPhone: z.string().optional(),
   netWeight: z.number().min(0).optional(),
   grossWeight: z.number().min(0).optional(),
-  // Import FOB only — enforced at submit, optional in the draft.
   containerNo: z.string().optional(),
   containerType: z.string().optional(),
   trackingStatus: z.enum(VEHICLE_TRACKING_STATUSES).optional(),
-  builtyStatus: z.enum(BUILTY_STATUSES).optional(),
-  /** Package-wise allocation for jobs taken from a Logistics order. See
-   *  vehiclePackageRefSchema above. */
+  // builtyStatus removed per confirmed design.
+  /** Package refs for logistics-sourced jobs. */
   packageRefs: z.array(vehiclePackageRefSchema).default([]),
+  /** Import consignment refs — multiple imports can ride one vehicle. */
+  importConsignmentRefs: z.array(vehicleImportRefSchema).default([]),
 })
 export type Vehicle = z.infer<typeof vehicleSchema>
 
@@ -95,8 +101,8 @@ export function emptyVehicle(): Vehicle {
     containerNo: '',
     containerType: '',
     trackingStatus: 'Going to load',
-    builtyStatus: 'NA',
     packageRefs: [],
+    importConsignmentRefs: [],
   }
 }
 
@@ -166,10 +172,12 @@ export const freightSchema = z.object({
   paymentStatus: z.enum(PAYMENT_STATUSES).optional(),
   paidAmount: z.number().min(0).optional(),
   // outstanding is derived.
+  /** Vehicle/container detention cost. */
+  detention: z.number().min(0).optional(),
 })
 
 // --- Step 4: Tracking ------------------------------------------------------
-// Per-vehicle tracking + builty live on the vehicle rows (Step 2 schema); this
+// Per-vehicle tracking lives on the vehicle rows (Step 2 schema); this
 // step edits those same rows plus the derived consignment rollup. No new
 // persisted fields, but a remarks field is handy.
 export const trackingSchema = z.object({
@@ -237,6 +245,7 @@ export const DRAFT_DEFAULT_VALUES: TruckingDraft = {
   actualFreight: 0,
   paymentStatus: 'Customer to pay',
   paidAmount: 0,
+  detention: 0,
   dispatchNoteDate: '',
   etaWorks: '',
   remarks: '',
@@ -265,7 +274,7 @@ export const WIZARD_STEPS: WizardStepDef[] = [
     step: 3,
     key: 'freight',
     label: 'Freight & Payment',
-    fields: ['quotedFreight', 'actualFreight', 'paymentStatus', 'paidAmount'],
+    fields: ['quotedFreight', 'actualFreight', 'paymentStatus', 'paidAmount', 'detention'],
   },
   { step: 4, key: 'tracking', label: 'Tracking', fields: ['dispatchNoteDate', 'etaWorks', 'remarks'] },
 ]

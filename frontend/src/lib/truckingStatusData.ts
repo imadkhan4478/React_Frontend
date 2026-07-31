@@ -59,6 +59,7 @@ export interface TruckingRow {
   actualFreight?: number
   paymentStatus?: TruckingDraft['paymentStatus']
   paidAmount?: number
+  detention?: number
   dispatchNoteDate?: string
   etaWorks?: string
   remarks?: string
@@ -110,7 +111,6 @@ function mockVehicle(movementType: string, allDelivered: boolean): Vehicle {
     v.containerType = pick(['20ft', '40ft', '40ft HC'])
   }
   v.trackingStatus = allDelivered ? 'Delivered' : pick(VEHICLE_TRACKING_STATUSES)
-  v.builtyStatus = rand() > 0.4 ? 'Yes' : 'NA'
   return v
 }
 
@@ -141,6 +141,7 @@ function makeMockJob(i: number): TruckingRow {
     actualFreight: incomplete ? undefined : actual,
     paymentStatus: rand() > 0.5 ? 'Customer to pay' : 'QG to pay',
     paidAmount: incomplete ? 0 : Math.round((actual * rand()) / 100) * 100,
+    detention: rand() > 0.7 ? Math.round((5000 + rand() * 25000) / 100) * 100 : 0,
     dispatchNoteDate: isoDate(-Math.floor(rand() * 20)),
     etaWorks: isoDate(Math.floor(rand() * 10)),
     open: !allDelivered,
@@ -193,7 +194,7 @@ function deriveFromLogistics(): TruckingRow[] {
         const first = r.items[0]
         const more = r.items.length - 1
         const itemSummary = first ? `${first.itemDetail}${more > 0 ? ` +${more} more` : ''}` : 'No items'
-        const ref = first?.idm || first?.exportNo || r.systemId
+        const ref = first?.jobNo || r.systemId
         const packingWorks = r.packages.find((p) => p.packingWorks)?.packingWorks
         return {
           systemId: `TR-LOG-${r.systemId}`,
@@ -286,7 +287,7 @@ function deriveFromExports(): TruckingRow[] {
           itemDetails: itemSummary,
           pickup: packingWorks || 'Factory',
           destination: r.pol || 'Port of loading',
-          referenceNo: first?.exportNo || r.systemId,
+          referenceNo: first?.jobNo || r.systemId,
           vehicles: [],
           open: true,
         }
@@ -421,7 +422,7 @@ export function takeAction(sourceType: 'from-logistics' | 'from-import-fob', sou
       const first = order.items[0]
       const more = order.items.length - 1
       itemDetails = first ? `${first.itemDetail}${more > 0 ? ` +${more} more` : ''}` : 'No items'
-      referenceNo = first?.idm || first?.exportNo || sourceId
+      referenceNo = first?.jobNo || sourceId
     }
   } else {
     const consignment = importsData.getConsignment(sourceId)
@@ -498,6 +499,7 @@ export function rowToDraft(row: TruckingRow): TruckingDraft {
     actualFreight: row.actualFreight ?? 0,
     paymentStatus: row.paymentStatus ?? 'Customer to pay',
     paidAmount: row.paidAmount ?? 0,
+    detention: row.detention ?? 0,
     dispatchNoteDate: row.dispatchNoteDate ?? '',
     etaWorks: row.etaWorks ?? '',
     remarks: row.remarks ?? '',
@@ -515,4 +517,22 @@ export function rowGrossWeight(row: TruckingRow): number {
 /** Source provenance tag for the list. */
 export function sourceLabel(source: TruckingSource): string {
   return source === 'from-logistics' ? 'Logistics' : source === 'from-import-fob' ? 'Import FOB' : source === 'from-export' ? 'Export' : 'Manual'
+}
+
+/**
+ * Import consignments available to check off against a vehicle on an Inbound
+ * job — two or more import shipments can legitimately ride the same truck,
+ * so the Vehicles step needs the full candidate list, not just the one
+ * consignment (if any) this specific job was taken from.
+ */
+export function getImportConsignmentOptions(): { systemId: string; label: string }[] {
+  try {
+    const rows = importsData.getConsignments() ?? []
+    return rows.map((r) => ({
+      systemId: r.systemId,
+      label: `${r.systemId} — ${r.items[0]?.itemName ?? r.requisitionSummary}`,
+    }))
+  } catch {
+    return []
+  }
 }

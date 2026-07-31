@@ -16,6 +16,7 @@ const EXPORT_COSTS: { name: keyof LogisticsDraft; label: string }[] = [
   { name: 'qflContainerMovement', label: 'QFL Transportation (Port → QFL → Port)' },
   { name: 'customClearanceCharges', label: 'Custom Clearance Charges' },
   { name: 'portCharges', label: 'Port Charges' },
+  { name: 'containerDetention', label: 'Container Detention' },
   { name: 'dhlCharges', label: 'DHL Charges' },
   { name: 'seaAirFreight', label: 'Sea Freight / Air Freight' },
 ]
@@ -23,6 +24,7 @@ const EXPORT_COSTS: { name: keyof LogisticsDraft; label: string }[] = [
 const LOCAL_COSTS: { name: keyof LogisticsDraft; label: string }[] = [
   { name: 'packingCost', label: 'Packing Cost' },
   { name: 'transportationCharges', label: 'Transportation Charges' },
+  { name: 'containerDetention', label: 'Container Detention' },
 ]
 
 export function Step4Expenditures() {
@@ -40,7 +42,7 @@ export function Step4Expenditures() {
       <div className="grid gap-4 sm:grid-cols-2">
         {costs.map(({ name, label }) => (
           <div key={name} className="flex flex-col gap-1.5">
-            <Label htmlFor={name}>{label}</Label>
+            <Label htmlFor={name}>{label} (Rs.)</Label>
             <Input
               id={name}
               type="number"
@@ -54,7 +56,7 @@ export function Step4Expenditures() {
 
       <div className="flex items-center justify-between rounded-lg border border-line bg-canvas-alt px-4 py-3">
         <span className="text-sm font-medium text-ink">Total Expenditure*</span>
-        <span className="text-sm font-semibold tabular-nums text-ink">{total.toFixed(2)}</span>
+        <span className="text-sm font-semibold tabular-nums text-ink">Rs. {total.toFixed(2)}</span>
       </div>
       <p className="-mt-2 text-xs text-muted">
         *Provisional — sums the {orderType === 'Export' ? 'export' : 'local'} cost lines entered so far.
