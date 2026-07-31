@@ -62,6 +62,16 @@ export function ImportsStatusList() {
       },
     },
     {
+      key: 'payment', label: 'Payment', width: 130,
+      sortValue: (r) => r.paymentState,
+      render: (r) => (
+        <span className="whitespace-nowrap text-[13px]">
+          <PaymentDot state={r.paymentState} />
+          {r.paymentLabel}
+        </span>
+      ),
+    },
+    {
       key: 'branch', label: 'Branch', width: 120,
       sortValue: (r) => r.branch,
       render: (r) => (
@@ -193,16 +203,6 @@ export function ImportsStatusList() {
       ),
     },
     {
-      key: 'payment', label: 'Payment', width: 130,
-      sortValue: (r) => r.paymentState,
-      render: (r) => (
-        <span className="whitespace-nowrap text-[13px]">
-          <PaymentDot state={r.paymentState} />
-          {r.paymentLabel}
-        </span>
-      ),
-    },
-    {
       key: 'clearance', label: 'Clearance', width: 120,
       render: (r) => {
         if (r.gateOut) return <span className="tabular-nums text-[13px]">Out {dateShort(r.gateOut)}</span>
@@ -302,6 +302,24 @@ export function ImportsStatusList() {
           <input type="checkbox" checked={includeClosed} onChange={(e) => setIncludeClosed(e.target.checked)} />
           Include completed
         </label>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs text-muted">ETD from</label>
+          <input
+            type="date"
+            value={filters.etdFrom ?? ''}
+            onChange={(e) => setFilters((f) => ({ ...f, etdFrom: e.target.value || undefined }))}
+            className="h-10 rounded-lg border border-line bg-surface px-3 text-sm text-ink"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs text-muted">ETD to</label>
+          <input
+            type="date"
+            value={filters.etdTo ?? ''}
+            onChange={(e) => setFilters((f) => ({ ...f, etdTo: e.target.value || undefined }))}
+            className="h-10 rounded-lg border border-line bg-surface px-3 text-sm text-ink"
+          />
+        </div>
       </FilterBar>
 
       <SortableTable

@@ -1,10 +1,13 @@
+import { useParams } from 'react-router-dom'
 import { useFormContext, useFieldArray, useWatch } from 'react-hook-form'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { QG_FACTORIES } from '@/features/truckingStatus/schema'
+import { getCrossBatchItems } from '@/lib/logisticsStatusData'
 import {
   PACKING_STATUSES, emptyPackage, packingDelay, packingSavings, outstandingByItem,
-  type LogisticsDraft, type LogisticsPackage, type LogisticsItem, type PackageAllocation,
+  totalPackageGrossWeight, totalPackageNetWeight,
+  type LogisticsDraft, type LogisticsPackage, type LogisticsItem, type PackageAllocation, type CrossBatchItem,
 } from '../../schema'
 
 const selectClass =
@@ -27,29 +30,36 @@ function DerivedField({ label, value, derivation }: { label: string; value: stri
  * One row in a package's allocation sub-table: "how much of this item is in
  * this package". Reads/writes `packages.{pkgIndex}.allocations` directly via
  * setValue rather than a nested useFieldArray, since the set of rows is
- * driven by the order's fixed item list, not independently added/removed.
+ * driven by the order's fixed item list (plus any cross-batch items), not
+ * independently added/removed. Matched by (itemId, sourceOrderId) so a
+ * cross-batch item never collides with a same-id local one.
  */
 function AllocationRow({
-  pkgIndex, item, allocations, onChange,
+  pkgIndex, item, sourceOrderId, sourceBatchLabel, allocations, onChange,
 }: {
   pkgIndex: number
   item: LogisticsItem
+  sourceOrderId: string
+  sourceBatchLabel?: string
   allocations: PackageAllocation[]
   onChange: (next: PackageAllocation[]) => void
 }) {
-  const existing = allocations.find((a) => a.itemId === item.id)
+  const existing = allocations.find((a) => a.itemId === item.id && a.sourceOrderId === sourceOrderId)
   const value = existing?.quantity ?? ''
 
   function handleChange(raw: string) {
     const qty = raw === '' ? undefined : Number(raw)
-    const next = allocations.filter((a) => a.itemId !== item.id)
-    next.push({ id: existing?.id ?? `alloc-${pkgIndex}-${item.id}`, itemId: item.id, quantity: qty })
+    const next = allocations.filter((a) => !(a.itemId === item.id && a.sourceOrderId === sourceOrderId))
+    next.push({ id: existing?.id ?? `alloc-${pkgIndex}-${sourceOrderId}-${item.id}`, itemId: item.id, sourceOrderId, quantity: qty })
     onChange(next)
   }
 
   return (
     <tr className="border-t border-line">
-      <td className="py-1.5 pr-3">{item.itemDetail || <span className="italic text-muted">Not named</span>}</td>
+      <td className="py-1.5 pr-3">
+        {item.itemDetail || <span className="italic text-muted">Not named</span>}
+        {sourceBatchLabel && <span className="ml-1.5 text-[11px] text-muted">({sourceBatchLabel})</span>}
+      </td>
       <td className="py-1.5 pr-3 text-muted">{item.quantity ?? '—'}</td>
       <td className="py-1.5">
         <input
@@ -69,25 +79,37 @@ function AllocationRow({
  *
  * One panel per physical package: cost/status/weight fields, a derived
  * packing delay and savings, and a per-item allocation sub-table (a package
- * routinely holds partial quantities from more than one item). Below every
- * package panel, one summary shows each item's outstanding (unallocated)
- * quantity across ALL packages combined — the one place a partially-split
- * item's remaining balance is visible at a glance.
+ * routinely holds partial quantities from more than one item). When this
+ * order's MO number is shared with sibling batches, each package also gets
+ * an "Items from other batches" section — items are SHARED across batches
+ * under the same MO (pull/reference, never copied), so a package in Batch 2
+ * can allocate quantity from an item that physically belongs to Batch 1.
+ *
+ * Below every package panel, one summary shows each item's outstanding
+ * (unallocated) quantity across ALL packages combined, and the whole step
+ * ends with a footer totalling net/gross weight across every package.
  */
 export function Step2Packing() {
+  const { id } = useParams<{ id: string }>()
   const { control, register, setValue } = useFormContext<LogisticsDraft>()
   const { fields, append, remove } = useFieldArray({ control, name: 'packages' })
-  const items = useWatch({ control, name: 'items' }) ?? []
-  const packages = useWatch({ control, name: 'packages' }) ?? []
+  const items = (useWatch({ control, name: 'items' }) ?? []) as LogisticsItem[]
+  const packages = (useWatch({ control, name: 'packages' }) ?? []) as LogisticsPackage[]
+  const moNo = useWatch({ control, name: 'moNo' })
 
-  const outstanding = outstandingByItem(items as LogisticsItem[], packages as LogisticsPackage[])
+  const crossBatchItems: CrossBatchItem[] = id && moNo ? getCrossBatchItems(moNo, id) : []
+  const allItems = [...items, ...crossBatchItems.map((c) => c.item)]
+
+  const outstanding = outstandingByItem(items, packages)
+  const totalNet = totalPackageNetWeight(packages, allItems)
+  const totalGross = totalPackageGrossWeight(packages)
 
   return (
     <div className="space-y-5">
       <div className="space-y-3">
         {fields.map((f, i) => {
           const pkg = packages[i] as LogisticsPackage | undefined
-          const delay = pkg ? packingDelay(pkg, items as LogisticsItem[]) : null
+          const delay = pkg ? packingDelay(pkg, items) : null
           const savings = pkg ? packingSavings(pkg) : null
           const allocations = pkg?.allocations ?? []
 
@@ -138,17 +160,17 @@ export function Step2Packing() {
                 />
 
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor={`packages.${i}.quotedPackingCost`}>Quoted Packing Cost</Label>
+                  <Label htmlFor={`packages.${i}.quotedPackingCost`}>Quoted Packing Cost (Rs.)</Label>
                   <Input id={`packages.${i}.quotedPackingCost`} type="number" step="0.01" {...register(`packages.${i}.quotedPackingCost`)} />
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor={`packages.${i}.actualPackingCost`}>Actual Packing Cost</Label>
+                  <Label htmlFor={`packages.${i}.actualPackingCost`}>Actual Packing Cost (Rs.)</Label>
                   <Input id={`packages.${i}.actualPackingCost`} type="number" step="0.01" {...register(`packages.${i}.actualPackingCost`)} />
                 </div>
 
                 <DerivedField
-                  label="Savings"
+                  label="Savings (Rs.)"
                   value={savings === null ? '—' : savings.toFixed(2)}
                   derivation="Quoted packing cost − actual packing cost"
                 />
@@ -183,11 +205,12 @@ export function Step2Packing() {
                       </tr>
                     </thead>
                     <tbody>
-                      {(items as LogisticsItem[]).map((item) => (
+                      {items.map((item) => (
                         <AllocationRow
                           key={item.id}
                           pkgIndex={i}
                           item={item}
+                          sourceOrderId={id ?? ''}
                           allocations={allocations}
                           onChange={(next) => setValue(`packages.${i}.allocations`, next, { shouldDirty: true })}
                         />
@@ -196,6 +219,39 @@ export function Step2Packing() {
                   </table>
                 </div>
               </div>
+
+              {/* cross-batch allocation — items owned by sibling batches under the same MO */}
+              {crossBatchItems.length > 0 && (
+                <div className="border-t border-line bg-canvas-alt/30 px-4 py-3">
+                  <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
+                    Items from other batches — shared under MO {moNo}
+                  </h4>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="text-xs text-muted">
+                        <tr>
+                          <th className="pb-1 pr-3">Item</th>
+                          <th className="pb-1 pr-3">Order qty</th>
+                          <th className="pb-1">In this package</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {crossBatchItems.map((c) => (
+                          <AllocationRow
+                            key={`${c.sourceOrderId}-${c.item.id}`}
+                            pkgIndex={i}
+                            item={c.item}
+                            sourceOrderId={c.sourceOrderId}
+                            sourceBatchLabel={c.sourceBatchLabel}
+                            allocations={allocations}
+                            onChange={(next) => setValue(`packages.${i}.allocations`, next, { shouldDirty: true })}
+                          />
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </section>
           )
         })}
@@ -227,7 +283,7 @@ export function Step2Packing() {
               </tr>
             </thead>
             <tbody>
-              {(items as LogisticsItem[]).map((item) => {
+              {items.map((item) => {
                 const rest = outstanding[item.id] ?? item.quantity ?? 0
                 return (
                   <tr key={item.id} className="border-t border-line">
@@ -245,6 +301,20 @@ export function Step2Packing() {
           </table>
         </div>
       </section>
+
+      {/* footer totals across all packages */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <DerivedField
+          label="Total Package Net Weight (kg)"
+          value={totalNet.toLocaleString()}
+          derivation="Sum of every allocated quantity × its item's unit weight, across all packages"
+        />
+        <DerivedField
+          label="Total Package Gross Weight (kg)"
+          value={totalGross.toLocaleString()}
+          derivation="Sum of each package's own gross weight"
+        />
+      </div>
     </div>
   )
 }

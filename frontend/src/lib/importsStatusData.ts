@@ -262,6 +262,10 @@ export interface ConsignmentFilters {
   stage?: StageKey
   includeClosed?: boolean
   missingOnly?: boolean
+  /** Date-range filter against ETD — the list's own primary chronological
+   *  column. */
+  etdFrom?: string
+  etdTo?: string
 }
 
 const inSet = (v: string, s?: string[]) => !s || s.length === 0 || s.includes(v)
@@ -281,6 +285,8 @@ export function getConsignments(f: ConsignmentFilters = {}): ConsignmentRow[] {
     if (!inSet(r.supplier, f.supplier)) return false
     if (f.requisition?.length && !f.requisition.some((x) => r.requisitionSummary.includes(x))) return false
     if (f.missingOnly && r.missing.length === 0) return false
+    if (f.etdFrom && (!r.etd || r.etd < f.etdFrom)) return false
+    if (f.etdTo && (!r.etd || r.etd > f.etdTo)) return false
     if (q) {
       const hay = [r.systemId, r.supplier, r.origin, r.branch, r.instrumentNo ?? '', ...r.items.map((i) => `${i.itemName} ${i.referenceNo}`)]
         .join(' ').toLowerCase()

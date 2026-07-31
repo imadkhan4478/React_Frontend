@@ -45,6 +45,8 @@ export function TruckingStatusList() {
   const [pendingOnly, setPendingOnly] = useState(false)
   const [search, setSearch] = useState('')
   const [takingId, setTakingId] = useState<string | null>(null)
+  const [executionFrom, setExecutionFrom] = useState('')
+  const [executionTo, setExecutionTo] = useState('')
 
   const rows = useMemo(
     () =>
@@ -58,8 +60,15 @@ export function TruckingStatusList() {
   )
 
   const pendingFiltered = useMemo(
-    () => (pendingOnly ? rows.filter((r) => r.source !== 'manual') : rows),
-    [rows, pendingOnly],
+    () => {
+      let out = pendingOnly ? rows.filter((r) => r.source !== 'manual') : rows
+      // Date-range filter against executionDate, the most prominent
+      // chronological field on a trucking job.
+      if (executionFrom) out = out.filter((r) => r.executionDate && r.executionDate >= executionFrom)
+      if (executionTo) out = out.filter((r) => r.executionDate && r.executionDate <= executionTo)
+      return out
+    },
+    [rows, pendingOnly, executionFrom, executionTo],
   )
 
   // Open requests first, then by id.
@@ -147,6 +156,24 @@ export function TruckingStatusList() {
           <input type="checkbox" checked={pendingOnly} onChange={(e) => setPendingOnly(e.target.checked)} />
           Pending requests only
         </label>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs text-muted">Execution from</label>
+          <input
+            type="date"
+            value={executionFrom}
+            onChange={(e) => setExecutionFrom(e.target.value)}
+            className="h-10 rounded-lg border border-line bg-surface px-3 text-sm text-ink"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs text-muted">Execution to</label>
+          <input
+            type="date"
+            value={executionTo}
+            onChange={(e) => setExecutionTo(e.target.value)}
+            className="h-10 rounded-lg border border-line bg-surface px-3 text-sm text-ink"
+          />
+        </div>
       </FilterBar>
 
       <div className="overflow-x-auto rounded-xl border border-line">

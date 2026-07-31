@@ -8,7 +8,10 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/features/auth/AuthContext'
 import { can } from '@/lib/roleAccess'
-import { getLogisticsOrder, updateLogisticsOrder } from '@/lib/logisticsStatusData'
+import {
+  getLogisticsOrder, updateLogisticsOrder, createLogisticsOrder,
+  saveLogisticsDraft, getLogisticsDraft, isKnownLogisticsOrder,
+} from '@/lib/logisticsStatusData'
 import { consignmentDraftSchema, DRAFT_DEFAULT_VALUES, WIZARD_STEPS, type LogisticsDraft } from '../schema'
 import { WizardStepper } from './WizardStepper'
 import { UnsavedChangesDialog } from './UnsavedChangesDialog'
@@ -43,10 +46,9 @@ export function LogisticsStatusWizard() {
   const { user } = useAuth()
   const { id, step } = useParams()
   const navigate = useNavigate()
-  const isNew = !id
   const [pendingStep, setPendingStep] = useState<number | null>(null)
 
-  const currentStep = isNew ? 1 : Number(step) || 1
+  const currentStep = id ? Number(step) || 1 : 1
   const stepIndex = Math.min(Math.max(currentStep, 1), WIZARD_STEPS.length) - 1
   const stepDef = WIZARD_STEPS[stepIndex]
   const StepComponent = STEP_COMPONENTS[stepIndex]
@@ -59,16 +61,30 @@ export function LogisticsStatusWizard() {
   // which is why the dirty-baseline resets in handleSaveAndMove/
   // handleDiscardAndMove below matter.
   const existingOrder = id ? getLogisticsOrder(id) : undefined
+  // A not-yet-submitted new order still needs to survive the /new →
+  // /:id/edit/2 remount (see commitNavigate below) — draft holds whatever
+  // was persisted there via saveLogisticsDraft, distinct from a real,
+  // submitted order in `existingOrder`.
+  const draft = id ? getLogisticsDraft(id) : undefined
+  // `!id` is only true on the very first page of the /new flow — Next mints
+  // a real id and navigates to /:id/edit/2, at which point `!id` alone would
+  // (wrongly) read as "editing an existing order" even though nothing has
+  // been submitted yet. `isNew` has to check for an actual SUBMITTED record
+  // (mirrors TruckingStatusWizard's `trulyNew` / isKnownRecord) — checking
+  // "does getLogisticsOrder find it" instead would flip isNew to false the
+  // moment the in-progress draft gets persisted for remount-survival, which
+  // is exactly the bug this two-tier draft/real split avoids.
+  const isNew = !id || !isKnownLogisticsOrder(id)
 
   const methods = useForm<z.input<typeof consignmentDraftSchema>, unknown, LogisticsDraft>({
     resolver: zodResolver(consignmentDraftSchema),
-    defaultValues: existingOrder ?? DRAFT_DEFAULT_VALUES,
+    defaultValues: existingOrder ?? draft ?? DRAFT_DEFAULT_VALUES,
     mode: 'onBlur',
   })
   // Manual dirty tracking against a normalized baseline snapshot rather than
   // react-hook-form's own `formState.isDirty` — see the matching note in
   // features/importsStatus/wizard/ImportsStatusWizard.tsx.
-  const baselineRef = useRef(snapshot(existingOrder ?? DRAFT_DEFAULT_VALUES))
+  const baselineRef = useRef(snapshot(existingOrder ?? draft ?? DRAFT_DEFAULT_VALUES))
   const isFormDirty = () => snapshot(methods.getValues()) !== baselineRef.current
 
   // Same actions the list/detail views gate on — a viewer or a user without
@@ -79,10 +95,27 @@ export function LogisticsStatusWizard() {
   function commitNavigate(clamped: number) {
     if (isNew) {
       if (clamped === 1) return
-      // Placeholder: a real step-1 submit would return the new order's id from
-      // the API. Steps 2-5 always live under /:id/edit/:step, so we stand in a
-      // client-generated id until that API exists.
-      navigate(`/logistics-status/${crypto.randomUUID()}/edit/${clamped}`)
+      // Reuse the id already in the URL once one exists — only the very
+      // first Next (bare /new, no id yet) mints one. Minting a fresh id on
+      // every step here would silently start a new, disconnected record
+      // each time, since nothing would ever tie steps 2-5 back to step 1.
+      const targetId = id ?? crypto.randomUUID()
+      // /new and /:id/edit/:step are separate <Route> entries (see App.tsx),
+      // so this specific transition — and ONLY this one, since every later
+      // step-to-step move matches the same :id/edit/:step route — genuinely
+      // REMOUNTS the component. A fresh useForm() on that remount reads
+      // DRAFT_DEFAULT_VALUES again (nothing findable via getLogisticsOrder
+      // yet), silently discarding everything just typed on Step 1. Saving a
+      // DRAFT here first — before navigating — means the remounted
+      // instance's very first render finds it via getLogisticsDraft(id) and
+      // seeds useForm's defaultValues from it instead. This deliberately
+      // does NOT touch the real `ALL` store (createLogisticsOrder) — doing
+      // so would flip isKnownLogisticsOrder(id) true prematurely, which
+      // would in turn flip `isNew` false on the very next step and bring
+      // back the unsaved-changes dialog for what is still an in-progress
+      // creation.
+      saveLogisticsDraft(targetId, methods.getValues() as LogisticsDraft)
+      navigate(`/logistics-status/${targetId}/edit/${clamped}`)
     } else {
       navigate(`/logistics-status/${id}/edit/${clamped}`)
     }
@@ -152,9 +185,13 @@ export function LogisticsStatusWizard() {
     // Edit mode: Submit is how the LAST step's edits get saved (there's no
     // further Next to trigger the unsaved-changes dialog) — without this,
     // e.g. checking "Send to Trucking" on Step 5 and clicking Submit would
-    // silently discard it. New-record creation still has no backing API.
-    if (id) updateLogisticsOrder(id, data, user?.name ?? 'Unknown')
-    else console.log('submit logistics draft', data) // placeholder until create API exists
+    // silently discard it. New-record creation persists under the id minted
+    // back on Step 1 — see createLogisticsOrder's comment for why reusing
+    // that id (rather than generating a fresh one here) matters.
+    if (id) {
+      if (existingOrder) updateLogisticsOrder(id, data, user?.name ?? 'Unknown')
+      else createLogisticsOrder(id, data)
+    }
     navigate(id ? `/logistics-status/${id}` : '/logistics-status')
   }
 

@@ -1,9 +1,12 @@
 import {
   ORDER_TYPES,
+  DEPARTMENTS,
   INCOTERMS,
   PACKING_STATUSES,
   statusesFor,
   recordRfdChange,
+  nextBatchNo,
+  batchDisplayLabel,
   type LogisticsDraft,
   type LogisticsItem,
   type LogisticsContainer,
@@ -11,6 +14,8 @@ import {
   type RfdChangeEvent,
   type RemarkEntry,
   type OrderType,
+  type Department,
+  type CrossBatchItem,
 } from '@/features/logisticsStatus/schema'
 import { QG_FACTORIES } from '@/features/truckingStatus/schema'
 // Cross-module: FOB imports need Logistics to arrange the sea freight and
@@ -56,7 +61,7 @@ export const CUSTOMERS = [
 const CATALOGUE = [
   'Cotton yarn — 30s combed', 'Surgical instruments — assorted', 'Auto parts — brake assemblies',
   'Sports goods — footballs', 'Leather goods — finished hides', 'Cutlery — stainless steel sets',
-  'Rice — Basmati 1121', 'Textile machinery spares',
+  'Rice — Basmati 1121', 'Textile machinery spares', 'Cement bags — 50kg', 'Refined sugar — 50kg bags',
 ] as const
 const COUNTRIES = ['United Arab Emirates', 'Germany', 'United Kingdom', 'Türkiye', 'Japan', 'United States'] as const
 const CITIES: Record<string, string> = {
@@ -105,8 +110,9 @@ function makeRfdHistory(itemKey: string): RfdChangeEvent[] {
   return events
 }
 
-function makeItems(orderKey: string, orderType: OrderType): LogisticsItem[] {
-  const isExport = orderType === 'Export'
+/** Items are simplified — no IDM, export number, or batch number (those
+ *  concepts moved to the order-level MO/batch system). */
+function makeItems(orderKey: string): LogisticsItem[] {
   const lineCount = randInt(1, 3)
   return Array.from({ length: lineCount }, (_, n) => {
     const unitWeight = randInt(2, 40)
@@ -118,9 +124,6 @@ function makeItems(orderKey: string, orderType: OrderType): LogisticsItem[] {
       quantity: randInt(50, 5000),
       unitWeight,
       grossWeight: randInt(200, 18000),
-      idm: `IDM-${randInt(1000, 9999)}`,
-      exportNo: isExport ? `EXP-${randInt(1000, 9999)}` : '',
-      batchNo: rng() > 0.4 ? `B-${randInt(100, 999)}` : '',
       plannedRfdDate: rng() > 0.15 ? addDays('2026-04-01', randInt(0, 90)) : '',
       actualRfdDate: rng() > 0.5 ? addDays('2026-04-10', randInt(0, 95)) : '',
       rfdHistory: makeRfdHistory(itemKey),
@@ -129,10 +132,12 @@ function makeItems(orderKey: string, orderType: OrderType): LogisticsItem[] {
 }
 
 /** 1-3 packages per order, each carrying a partial allocation of the order's
- *  items — roughly half of every item's quantity ends up fully allocated,
- *  half left with a real outstanding remainder, so the Packing step's
- *  outstanding-quantity summary has genuine examples of both. */
-function makePackages(orderKey: string, items: LogisticsItem[], stageIndex: number): LogisticsPackage[] {
+ *  OWN items (local — cross-batch allocations are something a user creates
+ *  interactively via the Packing step's cross-batch section, not seeded).
+ *  Roughly half of every item's quantity ends up fully allocated, half left
+ *  with a real outstanding remainder, so the outstanding-quantity summary has
+ *  genuine examples of both. */
+function makePackages(orderKey: string, systemId: string, items: LogisticsItem[], stageIndex: number): LogisticsPackage[] {
   if (stageIndex < 1 && rng() > 0.3) return [] // early-stage orders often have none yet
   const count = randInt(1, 3)
   const packages: LogisticsPackage[] = Array.from({ length: count }, (_, p) => ({
@@ -161,7 +166,7 @@ function makePackages(orderKey: string, items: LogisticsItem[], stageIndex: numb
         remaining,
         isLast && fullyAllocate ? remaining : Math.max(1, Math.floor(remaining * (0.3 + rng() * 0.3))),
       )
-      pkg.allocations.push({ id: `alloc-${pkg.id}-${item.id}`, itemId: item.id, quantity: portion })
+      pkg.allocations.push({ id: `alloc-${pkg.id}-${item.id}`, itemId: item.id, sourceOrderId: systemId, quantity: portion })
       remaining -= portion
     })
   })
@@ -181,16 +186,48 @@ function makeRemarksLog(orderKey: string): RemarkEntry[] {
   }))
 }
 
-function makeOrder(i: number): LogisticsOrder {
+/**
+ * BATCH SYSTEM SEED DATA: a handful of MO numbers are pre-assigned 2-3
+ * batches each, so the list's MO-group accent and the Packing step's
+ * cross-batch allocation section both have real sibling batches to show
+ * without the user first creating them by hand. Remaining orders get either
+ * a unique MO (batch 1 only) or no MO at all.
+ */
+const MO_GROUPS = [
+  { moNo: 'MO-2026-1001', batches: 3 },
+  { moNo: 'MO-2026-1002', batches: 2 },
+  { moNo: 'MO-2026-1003', batches: 2 },
+  { moNo: 'MO-2026-1004', batches: 3 },
+] as const
+
+interface OrderPlan {
+  moNo?: string
+  batchNo: number
+}
+
+function buildOrderPlans(total: number): OrderPlan[] {
+  const plans: OrderPlan[] = []
+  for (const g of MO_GROUPS) {
+    for (let b = 1; b <= g.batches; b++) plans.push({ moNo: g.moNo, batchNo: b })
+  }
+  while (plans.length < total) {
+    plans.push({ moNo: rng() > 0.5 ? `MO-2026-${randInt(2000, 2999)}` : undefined, batchNo: 1 })
+  }
+  return plans
+}
+
+function makeOrder(i: number, plan: OrderPlan): LogisticsOrder {
   const orderKey = String(240 - i)
+  const systemId = `LOG-2026-${orderKey.padStart(4, '0')}`
   const orderType: OrderType = pick(ORDER_TYPES)
+  const department: Department = pick(DEPARTMENTS)
   const isExport = orderType === 'Export'
   const statuses = statusesFor(orderType)
   const status = pick(statuses)
   const stageIndex = statuses.indexOf(status)
 
-  const items = makeItems(orderKey, orderType)
-  const packages = makePackages(orderKey, items, stageIndex)
+  const items = makeItems(orderKey)
+  const packages = makePackages(orderKey, systemId, items, stageIndex)
 
   const hasProgressed = stageIndex >= 2
   const gateOutDate = hasProgressed ? addDays('2026-04-01', randInt(20, 100)) : ''
@@ -206,13 +243,16 @@ function makeOrder(i: number): LogisticsOrder {
     : []
 
   return {
-    systemId: `LOG-2026-${orderKey.padStart(4, '0')}`,
+    systemId,
     orderType,
+    department,
     originCountry: isExport ? pick(COUNTRIES) : '',
     originCity: isExport ? '' : CITIES[province],
     originProvince: isExport ? '' : province,
     customerName: pick(CUSTOMERS),
-    moNo: rng() > 0.3 ? `MO-2026-${randInt(1000, 9999)}` : '',
+    moNo: plan.moNo ?? '',
+    batchNo: plan.batchNo,
+    batchLabel: rng() > 0.7 ? `${department} run ${plan.batchNo}` : '',
     incoterm: rng() > 0.4 ? pick(INCOTERMS) : undefined,
     items,
 
@@ -231,6 +271,7 @@ function makeOrder(i: number): LogisticsOrder {
 
     packingCost: randInt(2_000, 15_000),
     transportationCharges: !isExport ? randInt(5_000, 25_000) : 0,
+    containerDetention: hasContainers && rng() > 0.5 ? randInt(3_000, 20_000) : 0,
     insurance: isExport ? randInt(3_000, 12_000) : 0,
     truckingLhrToKhi: isExport ? randInt(8_000, 20_000) : 0,
     fumigationCost: isExport && rng() > 0.5 ? randInt(2_000, 6_000) : 0,
@@ -252,7 +293,8 @@ function makeOrder(i: number): LogisticsOrder {
   }
 }
 
-const ALL: LogisticsOrder[] = Array.from({ length: 24 }, (_, i) => makeOrder(i))
+const ORDER_PLANS = buildOrderPlans(24)
+const ALL: LogisticsOrder[] = ORDER_PLANS.map((plan, i) => makeOrder(i, plan))
 
 /* -- filtering ------------------------------------------------------- */
 export interface LogisticsFilters {
@@ -260,6 +302,11 @@ export interface LogisticsFilters {
   orderType?: OrderType[]
   status?: string[]
   customer?: string[]
+  /** Date-range filter against gateOutDate (Status step's field) — the most
+   *  prominent chronological field this module has since Transportation was
+   *  removed. */
+  gateOutFrom?: string
+  gateOutTo?: string
 }
 
 const inSet = <T extends string>(v: T, s?: T[]) => !s || s.length === 0 || s.includes(v)
@@ -270,10 +317,12 @@ export function getLogisticsOrders(f: LogisticsFilters = {}): LogisticsOrder[] {
     if (!inSet(o.orderType, f.orderType)) return false
     if (!inSet(o.status, f.status as string[] | undefined)) return false
     if (f.customer?.length && !f.customer.includes(o.customerName)) return false
+    if (f.gateOutFrom && (!o.gateOutDate || o.gateOutDate < f.gateOutFrom)) return false
+    if (f.gateOutTo && (!o.gateOutDate || o.gateOutDate > f.gateOutTo)) return false
     if (q) {
       const hay = [
-        o.systemId, o.customerName, o.moNo ?? '',
-        ...o.items.map((it) => `${it.itemDetail} ${it.idm} ${it.exportNo} ${it.jobNo}`),
+        o.systemId, o.customerName, o.moNo ?? '', batchDisplayLabel(o.batchNo, o.batchLabel),
+        ...o.items.map((it) => `${it.itemDetail} ${it.jobNo}`),
       ].join(' ').toLowerCase()
       if (!hay.includes(q)) return false
     }
@@ -283,6 +332,29 @@ export function getLogisticsOrders(f: LogisticsFilters = {}): LogisticsOrder[] {
 
 export const getLogisticsOrder = (systemId: string): LogisticsOrder | undefined =>
   ALL.find((o) => o.systemId === systemId)
+
+/**
+ * Every item available for cross-batch allocation within the same MO group —
+ * items owned by sibling batches sharing this order's MO number. Scans the
+ * order store since it needs visibility across records, not just this one.
+ */
+export function getCrossBatchItems(moNo: string, currentSystemId: string): CrossBatchItem[] {
+  if (!moNo) return []
+  return ALL
+    .filter((o) => o.moNo === moNo && o.systemId !== currentSystemId)
+    .flatMap((o) => o.items.map((item): CrossBatchItem => ({
+      sourceOrderId: o.systemId,
+      sourceBatchLabel: batchDisplayLabel(o.batchNo, o.batchLabel),
+      item,
+    })))
+}
+
+/** Next batch number for a given MO — 1 if the MO doesn't exist yet in the
+ *  store, otherwise one past the highest existing batch under it. Used by
+ *  the wizard when creating a new order to auto-assign batchNo. */
+export function nextBatchNoForMo(moNo: string): number {
+  return nextBatchNo(moNo, ALL.map((o) => ({ moNo: o.moNo, batchNo: o.batchNo })))
+}
 
 /**
  * Mutates the in-memory mock store — same convention as updateConsignment in
@@ -316,6 +388,49 @@ export function updateLogisticsOrder(systemId: string, data: LogisticsDraft, cha
   })
 
   ALL[idx] = { ...data, items, systemId }
+}
+
+/**
+ * Persists a brand-new order — called only from the wizard's final Submit.
+ * The wizard mints its own id (crypto.randomUUID(), the same pattern
+ * Trucking's taken jobs use) the moment Step 1's Next is clicked, well
+ * before Submit — so by the time this runs, `systemId` already appears in
+ * every URL the user has been navigating through. Reusing it (rather than
+ * generating a fresh LOG-2026-XXXX id here) is what makes
+ * getLogisticsOrder(id) find the record immediately after Submit. Clears
+ * the in-progress draft cache entry (see below) since the order is now real.
+ */
+export function createLogisticsOrder(systemId: string, data: LogisticsDraft): void {
+  ALL.push({ ...data, systemId })
+  delete DRAFTS[systemId]
+}
+
+/**
+ * Session cache for a NOT-YET-SUBMITTED new order — separate from `ALL`
+ * (real, submitted records) so a multi-step creation survives the
+ * `/new` → `/:id/edit/2` remount (a genuine remount: they're separate
+ * <Route> entries in App.tsx, unlike every later step-to-step move, which
+ * matches the same `:id/edit/:step` route and doesn't remount — see
+ * LogisticsStatusWizard's commitNavigate) without the order counting as a
+ * real, known record while it's still being filled in. Mirrors the
+ * MANUAL_JOBS/EDITS split in lib/truckingStatusData.ts.
+ */
+const DRAFTS: Record<string, LogisticsDraft> = {}
+
+export function saveLogisticsDraft(systemId: string, data: LogisticsDraft): void {
+  DRAFTS[systemId] = data
+}
+
+export function getLogisticsDraft(systemId: string): LogisticsDraft | undefined {
+  return DRAFTS[systemId]
+}
+
+/** True only for a real, submitted order — never for an in-progress draft.
+ *  The wizard uses this (not "does getLogisticsOrder find it") to decide
+ *  new-record-creation-mode vs. genuine-edit-mode, mirroring Trucking's
+ *  isKnownRecord() for the identical reason. */
+export function isKnownLogisticsOrder(systemId: string): boolean {
+  return ALL.some((o) => o.systemId === systemId)
 }
 
 /**
@@ -367,6 +482,7 @@ export function deriveImportFobRequests(): LogisticsFobRequest[] {
 
 export const customerList = [...CUSTOMERS]
 export const orderTypeList = [...ORDER_TYPES]
+export const departmentList = [...DEPARTMENTS]
 /** Both pipelines' statuses, deduplicated — a status filter needs every
  *  label either order type can be in, not just one pipeline's set. */
 export const statusList = [...new Set([...statusesFor('Export'), ...statusesFor('Local')])]

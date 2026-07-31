@@ -85,6 +85,12 @@ export function Step3Freight() {
         value={outstandingAmt === null ? '—' : outstandingAmt.toFixed(2)}
         derivation="Actual freight − paid"
       />
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="detention">Detention (Rs.)</Label>
+        <Input id="detention" type="number" step="0.01" {...register('detention', { valueAsNumber: true })} />
+        {errors.detention && <p className="text-xs text-risk">{errors.detention.message}</p>}
+      </div>
     </div>
   )
 }

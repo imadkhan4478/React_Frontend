@@ -7,10 +7,10 @@ import { useAuth } from '@/features/auth/AuthContext'
 import { can } from '@/lib/roleAccess'
 import {
   WIZARD_STEPS, daysBetween, marketingDelay, buildRemarksFeed,
-  totalQuantity, totalNetWeight, totalGrossWeight, exportNumbers,
-  packingDelay, packingSavings, outstandingByItem,
+  totalQuantity, totalNetWeight, totalGrossWeight, orderTypeLabel, batchDisplayLabel,
+  packingDelay, packingSavings, outstandingByItem, totalPackageNetWeight, totalPackageGrossWeight,
 } from './schema'
-import { getLogisticsOrder } from '@/lib/logisticsStatusData'
+import { getLogisticsOrder, getCrossBatchItems } from '@/lib/logisticsStatusData'
 import { getTruckingReadthrough } from '@/lib/truckingStatusData'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -21,7 +21,7 @@ const dateShort = (v?: string) => {
   return `${d.getDate()} ${MONTHS[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`
 }
 const num = (v: number) => v.toLocaleString('en-US')
-const pkr = (v: number | undefined) => (v === undefined || v === 0 ? '—' : `PKR ${Math.round(v).toLocaleString('en-US')}`)
+const pkr = (v: number | undefined) => (v === undefined || v === 0 ? '—' : `Rs. ${Math.round(v).toLocaleString('en-US')}`)
 const daysFmt = (n: number | null) => (n === null ? '—' : n <= 0 ? 'on time' : `+${n} d`)
 
 const EXPORT_COSTS: { name: string; label: string }[] = [
@@ -34,12 +34,14 @@ const EXPORT_COSTS: { name: string; label: string }[] = [
   { name: 'qflContainerMovement', label: 'QFL Transportation (Port → QFL → Port)' },
   { name: 'customClearanceCharges', label: 'Custom Clearance Charges' },
   { name: 'portCharges', label: 'Port Charges' },
+  { name: 'containerDetention', label: 'Container Detention' },
   { name: 'dhlCharges', label: 'DHL Charges' },
   { name: 'seaAirFreight', label: 'Sea Freight / Air Freight' },
 ]
 const LOCAL_COSTS: { name: string; label: string }[] = [
   { name: 'packingCost', label: 'Packing Cost' },
   { name: 'transportationCharges', label: 'Transportation Charges' },
+  { name: 'containerDetention', label: 'Container Detention' },
 ]
 
 /**
@@ -47,11 +49,13 @@ const LOCAL_COSTS: { name: string; label: string }[] = [
  *
  * All five modules for one order, read-only, on a single page — same purpose
  * as ImportsStatusDetail: this is where a manager actually looks things up,
- * the wizard is for entry. Section 2 is Packing (Transportation was removed —
- * see schema.ts), with each package's delay/savings shown and the same
- * outstanding-quantity summary the wizard's Packing step shows. Section 5
- * adds the marketing delay, the merged remarks feed, and — once sent — a
- * read-through into the linked Trucking job.
+ * the wizard is for entry. Section 1 shows department/MO/batch alongside the
+ * simplified item lines (no IDM/export no. — see schema.ts). Section 2 is
+ * Packing, with each package's delay/savings, its allocations (local AND
+ * cross-batch, labeled by source batch), the outstanding-quantity summary,
+ * and total net/gross weight across every package. Section 5 adds the
+ * marketing delay, the merged remarks feed, and — once sent — a read-through
+ * into the linked Trucking job.
  */
 export default function LogisticsStatusDetail() {
   const { id } = useParams<{ id: string }>()
@@ -60,6 +64,7 @@ export default function LogisticsStatusDetail() {
 
   const row = useMemo(() => (id ? getLogisticsOrder(id) : undefined), [id])
   const editable = can(user, 'editAny') || can(user, 'editOwnDraft')
+  const crossBatchItems = row?.moNo ? getCrossBatchItems(row.moNo, row.systemId) : []
 
   if (!row) {
     return (
@@ -79,9 +84,11 @@ export default function LogisticsStatusDetail() {
   const qty = totalQuantity(row.items)
   const netW = totalNetWeight(row.items)
   const grossW = totalGrossWeight(row.items)
-  const exportNos = exportNumbers(row.items)
   const arrivalDelay = daysBetween(row.croArrivalDate, row.actualArrivalDate)
   const outstanding = outstandingByItem(row.items, row.packages)
+  const allItems = [...row.items, ...crossBatchItems.map((c) => c.item)]
+  const totalPkgNet = totalPackageNetWeight(row.packages, allItems)
+  const totalPkgGross = totalPackageGrossWeight(row.packages)
   const mDelay = marketingDelay(row.packages, row.gateOutDate)
   const feed = buildRemarksFeed(row.items, row.remarksLog)
   const readthrough = row.sentToTrucking ? getTruckingReadthrough(row.systemId) : null
@@ -105,7 +112,7 @@ export default function LogisticsStatusDetail() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PageHeader
           title={row.systemId}
-          subtitle={`${row.customerName} · ${row.orderType} · ${row.items.length} item${row.items.length === 1 ? '' : 's'}`}
+          subtitle={`${row.customerName} · ${orderTypeLabel(row.department, row.orderType)} · ${batchDisplayLabel(row.batchNo, row.batchLabel)} · ${row.items.length} item${row.items.length === 1 ? '' : 's'}`}
           module="logisticsStatus"
         />
         <div className="flex items-center gap-3">
@@ -125,12 +132,10 @@ export default function LogisticsStatusDetail() {
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-3 lg:grid-cols-6">
         <KeyFigure label="Total quantity" value={num(qty)} sub={`${row.items.length} item line${row.items.length === 1 ? '' : 's'}`} />
         <KeyFigure label="Total weight" value={`${num(grossW)} kg`} sub={`${num(netW)} kg net`} />
-        <KeyFigure label="MO No." value={row.moNo || '—'} sub={row.incoterm || 'No incoterm'} />
+        <KeyFigure label="MO No." value={row.moNo || '—'} sub={batchDisplayLabel(row.batchNo, row.batchLabel)} />
         <KeyFigure label="Packages" value={row.packages.length ? String(row.packages.length) : '—'} sub={row.packages.length ? `${row.packages.filter((p) => p.status === 'Packed').length} packed` : 'None yet'} />
         <KeyFigure label="Expenditure" value={pkr(costTotal || undefined)} sub={`${costs.length} cost line${costs.length === 1 ? '' : 's'} tracked`} />
-        {isExport && (
-          <KeyFigure label="Export no(s)." value={exportNos.length ? String(exportNos.length) : '—'} sub={exportNos.length <= 1 ? (exportNos[0] ?? 'Not yet entered') : `${exportNos.length} distinct`} warn={exportNos.length === 0} />
-        )}
+        <KeyFigure label="Incoterm" value={row.incoterm || '—'} sub={row.department} />
       </div>
 
       {/* section nav */}
@@ -145,10 +150,12 @@ export default function LogisticsStatusDetail() {
       {/* 1 — order */}
       <Section id="s-order" title="Order details" edit={<EditLink step="order" />}>
         <FieldGrid>
+          <Field label="Department" value={row.department} />
           <Field label="Order type" value={row.orderType} />
           <Field label="Customer" value={row.customerName} span={2} />
           <Field label="Origin" value={isExport ? row.originCountry : `${row.originCity}, ${row.originProvince}`} />
           <Field label="MO No." value={row.moNo} mono />
+          <Field label="Batch" value={batchDisplayLabel(row.batchNo, row.batchLabel)} />
           <Field label="Incoterm" value={row.incoterm} />
         </FieldGrid>
 
@@ -161,8 +168,6 @@ export default function LogisticsStatusDetail() {
                 <th className="px-3 py-2 text-right">Quantity</th>
                 <th className="px-3 py-2 text-right">Net wt (kg)</th>
                 <th className="px-3 py-2 text-right">Gross wt (kg)</th>
-                <th className="px-3 py-2 text-left">IDM</th>
-                {isExport && <th className="px-3 py-2 text-left">Export no.</th>}
                 <th className="px-3 py-2 text-left">Planned RFD</th>
                 <th className="px-3 py-2 text-left">Actual RFD</th>
               </tr>
@@ -175,12 +180,6 @@ export default function LogisticsStatusDetail() {
                   <td className="px-3 py-2 text-right tabular-nums">{it.quantity !== undefined ? num(it.quantity) : '—'}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{num(it.quantity !== undefined && it.unitWeight !== undefined ? it.quantity * it.unitWeight : 0)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{it.grossWeight !== undefined ? num(it.grossWeight) : '—'}</td>
-                  <td className="px-3 py-2 tabular-nums">{it.idm || '—'}</td>
-                  {isExport && (
-                    <td className="px-3 py-2 tabular-nums">
-                      {it.exportNo || <span className="rounded border border-[var(--color-watch)]/30 bg-[var(--color-watch-bg)] px-1.5 py-0.5 text-[11px] text-[var(--color-watch)]">Missing</span>}
-                    </td>
-                  )}
                   <td className="px-3 py-2 tabular-nums">{dateShort(it.plannedRfdDate)}</td>
                   <td className="px-3 py-2 tabular-nums">{dateShort(it.actualRfdDate)}</td>
                 </tr>
@@ -193,14 +192,11 @@ export default function LogisticsStatusDetail() {
                 <td className="px-3 py-2 text-right tabular-nums">{num(qty)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{num(netW)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{num(grossW)}</td>
-                <td colSpan={isExport ? 4 : 3} />
+                <td colSpan={2} />
               </tr>
             </tfoot>
           </table>
         </div>
-        {isExport && exportNos.length > 1 && (
-          <p className="mt-2 text-xs text-muted">This order's items are filed under {exportNos.length} different export numbers.</p>
-        )}
       </Section>
 
       {/* 2 — packing */}
@@ -232,8 +228,19 @@ export default function LogisticsStatusDetail() {
                   {pkg.allocations.length > 0 && (
                     <div className="border-t border-line px-4 py-2 text-[12px] text-muted">
                       {pkg.allocations.map((a) => {
-                        const item = row.items.find((it) => it.id === a.itemId)
-                        return <div key={a.id}>{item?.itemDetail ?? a.itemId}: {a.quantity ?? 0}</div>
+                        const local = a.sourceOrderId === row.systemId
+                        const item = local
+                          ? row.items.find((it) => it.id === a.itemId)
+                          : crossBatchItems.find((c) => c.item.id === a.itemId && c.sourceOrderId === a.sourceOrderId)?.item
+                        const batchTag = local
+                          ? null
+                          : crossBatchItems.find((c) => c.item.id === a.itemId && c.sourceOrderId === a.sourceOrderId)?.sourceBatchLabel
+                        return (
+                          <div key={a.id}>
+                            {item?.itemDetail ?? a.itemId}: {a.quantity ?? 0}
+                            {batchTag && <span className="ml-1 rounded bg-brand/10 px-1 py-0.5 text-[10px] text-brand">{batchTag}</span>}
+                          </div>
+                        )
                       })}
                     </div>
                   )}
@@ -266,6 +273,14 @@ export default function LogisticsStatusDetail() {
                 )
               })}
             </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-line font-semibold">
+                <td className="px-3 py-2">Package totals</td>
+                <td colSpan={2} className="px-3 py-2 text-right tabular-nums">
+                  {num(totalPkgNet)} kg net · {num(totalPkgGross)} kg gross
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </Section>

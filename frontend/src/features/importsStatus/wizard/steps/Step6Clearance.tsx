@@ -71,6 +71,10 @@ export function Step6Clearance() {
           <Field label="Demurrage (PKR)" hint="Carries into landed cost">
             <Input type="number" min="0" step="any" className="tabular-nums" {...register('demurrageCost')} placeholder="0" />
           </Field>
+
+          <Field label="Container Detention (PKR)">
+            <Input type="number" min="0" step="any" className="tabular-nums" {...register('containerDetention')} placeholder="0" />
+          </Field>
         </div>
 
         {/* live clearance readout */}
