@@ -2,7 +2,7 @@ import { useFormContext, useFieldArray, useWatch } from 'react-hook-form'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import {
-  ORDER_TYPES, emptyItem, itemPendingFields,
+  ORDER_TYPES, INCOTERMS, emptyItem, itemPendingFields, itemNetWeight,
   type LogisticsDraft, type LogisticsItem,
 } from '../../schema'
 
@@ -10,12 +10,35 @@ const selectClass =
   'flex h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink ' +
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50'
 
+/** Read-only derived output: greyed, with the derivation stated. Mirrors the
+ * imports module's "calculated values are computed, never keyed in" rule. */
+function DerivedField({ label, value, derivation }: { label: string; value: string; derivation: string }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label>{label}</Label>
+      <div className="flex h-10 w-full items-center rounded-lg border border-line bg-canvas-alt px-3 text-sm tabular-nums text-muted">
+        {value}
+      </div>
+      <p className="text-xs text-muted">{derivation}</p>
+    </div>
+  )
+}
+
 /**
  * Step 1 — Order details.
  *
- * Order-level fields (type, origin, customer) apply to the whole order. Item detail, quantity, both weights, IDM, export
- * no. and batch no. are per item — an order can bundle several items, and an
- * export order's items can carry different export numbers from each other.
+ * Order-level fields (type, origin, customer, MO no., incoterm) apply to the
+ * whole order. Job#, item detail, quantity, unit weight, gross weight, IDM,
+ * export no., batch no. and the Planned/Actual RFD dates are per item — an
+ * order can bundle several items, each running its own production timeline.
+ *
+ * Net weight is DERIVED (quantity × unit weight, via itemNetWeight() in
+ * schema.ts) — shown read-only, never typed in directly.
+ *
+ * RFD date changes are NOT logged here. The audit trail (recordRfdChange) is
+ * wired into the save path in lib/logisticsStatusData.ts's
+ * updateLogisticsOrder(), which is where the item's previous value is
+ * actually known — see the comment there.
  */
 export function Step1Order() {
   const { register, control, watch, formState: { errors } } = useFormContext<LogisticsDraft>()
@@ -72,6 +95,21 @@ export function Step1Order() {
             <Input id="customerName" {...register('customerName')} />
             {errors.customerName && <p className="text-xs text-risk">{errors.customerName.message}</p>}
           </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="moNo">MO No. <span className="font-normal text-muted">(optional)</span></Label>
+            <Input id="moNo" placeholder="Marketing/Manufacturing Order no." {...register('moNo')} />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="incoterm">Incoterm <span className="font-normal text-muted">(optional)</span></Label>
+            <select id="incoterm" className={selectClass} {...register('incoterm')}>
+              <option value="">Select…</option>
+              {INCOTERMS.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </div>
         </div>
       </section>
 
@@ -85,6 +123,7 @@ export function Step1Order() {
           {fields.map((f, i) => {
             const item = items?.[i] as LogisticsItem | undefined
             const pending = item ? itemPendingFields(item, orderType) : []
+            const netWeight = item ? itemNetWeight(item) : 0
             return (
               <div key={f.id} className="rounded-lg border border-line bg-canvas-alt/40">
                 <div className="flex items-center gap-2 border-b border-line/60 px-3 py-2">
@@ -104,7 +143,12 @@ export function Step1Order() {
                 </div>
 
                 <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <div className="flex flex-col gap-1.5 sm:col-span-2 lg:col-span-4">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor={`items.${i}.jobNo`}>Job #</Label>
+                    <Input id={`items.${i}.jobNo`} {...register(`items.${i}.jobNo`)} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5 sm:col-span-1 lg:col-span-3">
                     <Label htmlFor={`items.${i}.itemDetail`}>Item Detail</Label>
                     <Input id={`items.${i}.itemDetail`} {...register(`items.${i}.itemDetail`)} />
                     {errors.items?.[i]?.itemDetail && <p className="text-xs text-risk">{errors.items[i]?.itemDetail?.message}</p>}
@@ -117,10 +161,15 @@ export function Step1Order() {
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <Label htmlFor={`items.${i}.netWeight`}>Net Weight (kg)</Label>
-                    <Input id={`items.${i}.netWeight`} type="number" step="0.01" {...register(`items.${i}.netWeight`)} />
-                    {errors.items?.[i]?.netWeight && <p className="text-xs text-risk">{errors.items[i]?.netWeight?.message}</p>}
+                    <Label htmlFor={`items.${i}.unitWeight`}>Unit Weight (kg)</Label>
+                    <Input id={`items.${i}.unitWeight`} type="number" step="0.01" {...register(`items.${i}.unitWeight`)} />
                   </div>
+
+                  <DerivedField
+                    label="Net Weight (kg)"
+                    value={netWeight ? netWeight.toLocaleString() : '—'}
+                    derivation="Quantity × unit weight"
+                  />
 
                   <div className="flex flex-col gap-1.5">
                     <Label htmlFor={`items.${i}.grossWeight`}>Gross Weight (kg)</Label>
@@ -148,6 +197,16 @@ export function Step1Order() {
                       Batch No. <span className="font-normal text-muted">(optional)</span>
                     </Label>
                     <Input id={`items.${i}.batchNo`} {...register(`items.${i}.batchNo`)} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor={`items.${i}.plannedRfdDate`}>Planned RFD Date</Label>
+                    <Input id={`items.${i}.plannedRfdDate`} type="date" {...register(`items.${i}.plannedRfdDate`)} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor={`items.${i}.actualRfdDate`}>Actual RFD Date</Label>
+                    <Input id={`items.${i}.actualRfdDate`} type="date" {...register(`items.${i}.actualRfdDate`)} />
                   </div>
                 </div>
               </div>

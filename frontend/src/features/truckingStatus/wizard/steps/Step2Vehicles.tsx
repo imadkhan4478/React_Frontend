@@ -11,15 +11,78 @@ import {
   usesContainers,
   totalGrossWeight,
   totalNetWeight,
+  assignedPackageIds,
   type TruckingDraft,
+  type Vehicle,
+  type VehiclePackageRef,
 } from '../../schema'
 
 const selectClass =
   'flex h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink ' +
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50'
 
+/**
+ * Package-wise allocation checklist for one vehicle — only rendered when the
+ * job's takenSnapshot actually carries package references (i.e. it came from
+ * a taken Logistics order that has packages; manual jobs and item-wise
+ * snapshots never render this). Package→vehicle is intentionally NOT 1:1 (a
+ * package may fill a whole vehicle, or several may share one), so double
+ * assignment is only warned about, never blocked.
+ */
+function PackageAllocation({
+  vehicleIndex, vehicles, setValue,
+}: {
+  vehicleIndex: number
+  vehicles: Vehicle[]
+  setValue: (name: `vehicles.${number}.packageRefs`, value: VehiclePackageRef[], opts?: { shouldDirty?: boolean }) => void
+}) {
+  const { control } = useFormContext<TruckingDraft>()
+  const takenSnapshot = useWatch({ control, name: 'takenSnapshot' }) ?? []
+  const packageSnapshots = takenSnapshot.filter((s) => s.sourcePackageId)
+  if (packageSnapshots.length === 0) return null
+
+  const thisVehicle = vehicles[vehicleIndex]
+  const refs = thisVehicle?.packageRefs ?? []
+  const assignedElsewhere = assignedPackageIds(vehicles.filter((_, i) => i !== vehicleIndex))
+
+  function toggle(packageId: string, checked: boolean) {
+    const next = checked
+      ? [...refs, { packageId }]
+      : refs.filter((r) => r.packageId !== packageId)
+    setValue(`vehicles.${vehicleIndex}.packageRefs`, next, { shouldDirty: true })
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border border-line bg-canvas-alt/40 p-3 sm:col-span-2 lg:col-span-3">
+      <Label>Packages on this vehicle</Label>
+      <div className="mt-1.5 flex flex-col gap-1.5">
+        {packageSnapshots.map((p) => {
+          const checked = refs.some((r) => r.packageId === p.sourcePackageId)
+          const elsewhere = !checked && assignedElsewhere.has(p.sourcePackageId!)
+          return (
+            <label key={p.sourcePackageId} className="flex items-center gap-2 text-sm text-ink">
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={(e) => toggle(p.sourcePackageId!, e.target.checked)}
+              />
+              {p.label}
+              {p.itemDetails && <span className="text-muted"> — {p.itemDetails}</span>}
+              {elsewhere && (
+                <span className="rounded border border-[var(--color-watch)]/30 bg-[var(--color-watch-bg)] px-1.5 py-0.5 text-[10.5px] text-[var(--color-watch)]">
+                  already assigned to another vehicle
+                </span>
+              )}
+            </label>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export function Step2Vehicles() {
-  const { register, control } = useFormContext<TruckingDraft>()
+  const { register, control, setValue } = useFormContext<TruckingDraft>()
   const { fields, append, remove } = useFieldArray({ control, name: 'vehicles' })
 
   const movementType = useWatch({ control, name: 'movementType' })
@@ -124,6 +187,8 @@ export function Step2Vehicles() {
                 ))}
               </select>
             </div>
+
+            <PackageAllocation vehicleIndex={i} vehicles={vehicles ?? []} setValue={setValue} />
           </div>
         </div>
       ))}

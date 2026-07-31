@@ -20,9 +20,18 @@ export function Step1Movement() {
   const movementType = useWatch({ control, name: 'movementType' })
   const factoryMode = usesFactoryDropdowns(movementType)
   const showReference = usesReferenceNo(movementType)
+  const sourceRef = useWatch({ control, name: 'sourceRef' })
+  const takenAt = useWatch({ control, name: 'takenAt' })
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
+      {sourceRef && (
+        <div className="rounded-lg border border-line bg-canvas-alt px-4 py-3 text-sm text-muted sm:col-span-2">
+          Taken from {sourceRef}{takenAt ? ` on ${new Date(takenAt).toLocaleString()}` : ''} — fields below are
+          pre-filled from that record; this job is now independent of it.
+        </div>
+      )}
+
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="movementType">Movement Type</Label>
         <select id="movementType" className={selectClass} {...register('movementType')}>
