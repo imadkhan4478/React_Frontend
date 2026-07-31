@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 import { mockLogin } from '@/lib/mockAuth'
+import { backendLogin } from '@/lib/api/auth'
 import type { Permission } from '@/lib/roleAccess'
 
 export interface User {
@@ -37,6 +38,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const loggedInUser = mockLogin(username, password)
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(loggedInUser))
     setUser(loggedInUser)
+
+    // Best-effort: only the modules wired to the real backend so far (the
+    // Imports dashboard) need its httpOnly session cookie. Most mock
+    // accounts have no matching real account yet, so a failure here is
+    // expected and silently ignored — the rest of the app keeps working
+    // purely on the mock session above.
+    try {
+      await backendLogin(username, password)
+    } catch {
+      // no real backend account for this user (yet) — fine, ignore
+    }
   }
 
   async function logout() {

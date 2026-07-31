@@ -1,0 +1,8 @@
+.env
+/venv
+__pycache__/
+
+# Real company data — supplier/pricing/quantity spreadsheets the loaders
+# read from. Code ships, data stays local; point your own copy at
+# app/loading/data/ (see CLAUDE.md / load_all.py for the expected layout).
+app/loading/data/

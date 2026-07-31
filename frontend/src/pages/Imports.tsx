@@ -1,164 +1,149 @@
-import { useMemo, useState } from 'react'
+import { ShieldAlert } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { FilterBar } from '@/components/FilterBar'
-import { MultiSelectFilter } from '@/components/MultiSelectFilter'
+import { SingleSelectFilter } from '@/components/SingleSelectFilter'
 import { DateRangeFilter } from '@/components/DateRangeFilter'
-import { Disclosure } from '@/components/Disclosure'
 import { KpiCard } from '@/components/KpiCard'
 import { HeroStat } from '@/components/HeroStat'
-import { InsightsCard } from '@/components/InsightsCard'
 import { ChartCard } from '@/components/ChartCard'
-import { DataTable, type Column } from '@/components/DataTable'
-import { StatusBadge } from '@/components/StatusBadge'
-import { CategoryBar } from '@/components/charts/CategoryBar'
+import { Card, CardContent } from '@/components/ui/card'
 import { Donut } from '@/components/charts/Donut'
 import { RankedBar } from '@/components/charts/RankedBar'
-import { money, shortDate, weeklyTrendPoints, dateInRange } from '@/lib/format'
-import {
-  getImports, type ImportRow,
-  importStatusList, importDocumentationStatusList, importBranchList, importCategoryList, importSupplierList,
-  importCustomerList, importCountryList, importShippingLineList, importModeOfShipmentList, importBankList,
-} from '@/lib/mockData/imports'
+import { money } from '@/lib/format'
+import { useState } from 'react'
+import { useImportsDashboard } from '@/lib/api/useImportsDashboard'
+import { ApiError } from '@/lib/api/auth'
+import type { ValueRow } from '@/lib/api/importsDashboard'
 
-const INSIGHT_TABS = [
-  { value: 'status', label: 'Clearance Status' },
-  { value: 'country', label: 'By Country' },
-  { value: 'category', label: 'By Category' },
-] as const
-
-const OPEN_EXCLUDED = ['Arrived at Works', 'Order Cancelled']
-
-function sumBy(rows: ImportRow[], key: 'supplier_country' | 'category' | 'supplier') {
-  const map = new Map<string, number>()
-  for (const r of rows) map.set(r[key], (map.get(r[key]) ?? 0) + r.total_value_pkr)
-  return [...map.entries()].map(([label, total_value_pkr]) => ({ [key]: label, total_value_pkr }) as Record<string, number | string>)
-    .sort((a, b) => (b.total_value_pkr as number) - (a.total_value_pkr as number))
+// Backed by the real database (app/dashboard/imports), not
+// lib/mockData/imports.ts — that mock module still exists and still backs
+// Reports' "Imports" data type there, it's just not used on this page
+// anymore. The backend's filters only take one value each (plain query
+// params, not arrays), and it doesn't expose a row-level list yet, so this
+// page is KPIs/charts, not a filterable table — the row-level "View data"
+// section comes back once that endpoint exists.
+function toMillions(rows: ValueRow[]): ValueRow[] {
+  return rows.map((r) => ({ ...r, value: Number((r.value / 1_000_000).toFixed(2)) }))
 }
 
 export function Imports() {
-  const [status, setStatus] = useState<string[]>([])
-  const [documentationStatus, setDocumentationStatus] = useState<string[]>([])
-  const [branch, setBranch] = useState<string[]>([])
-  const [category, setCategory] = useState<string[]>([])
-  const [supplier, setSupplier] = useState<string[]>([])
-  const [customer, setCustomer] = useState<string[]>([])
-  const [country, setCountry] = useState<string[]>([])
+  const [works, setWorks] = useState('')
+  const [supplier, setSupplier] = useState('')
+  const [country, setCountry] = useState('')
+  const [itemCategory, setItemCategory] = useState('')
+  const [status, setStatus] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
-  const [shippingLine, setShippingLine] = useState<string[]>([])
-  const [modeOfShipment, setModeOfShipment] = useState<string[]>([])
-  const [bank, setBank] = useState<string[]>([])
-  const [search, setSearch] = useState('')
-  const [insightTab, setInsightTab] = useState<(typeof INSIGHT_TABS)[number]['value']>('status')
 
-  const filtered = useMemo(
-    () => getImports({ status, documentationStatus, branch, category, supplier, customer, country, shippingLine, modeOfShipment, bank }),
-    [status, documentationStatus, branch, category, supplier, customer, country, shippingLine, modeOfShipment, bank],
-  )
-  const data = useMemo(
-    () => filtered.filter((r) => dateInRange(r.demand_date, dateFrom, dateTo)),
-    [filtered, dateFrom, dateTo],
-  )
+  const { data, isLoading, isError, error } = useImportsDashboard({
+    work: works || undefined,
+    supplier: supplier || undefined,
+    country: country || undefined,
+    item_category: itemCategory || undefined,
+    status: status || undefined,
+    from_date: dateFrom || undefined,
+    to_date: dateTo || undefined,
+  })
 
-  const tableRows = useMemo(() => {
-    if (!search.trim()) return data
-    const needle = search.toLowerCase()
-    return data.filter((r) => [r.import_ref, r.customer, r.supplier].some((v) => v.toLowerCase().includes(needle)))
-  }, [data, search])
-
-  const totalValue = data.reduce((s, r) => s + r.total_value_pkr, 0)
-  const totalWeight = data.reduce((s, r) => s + r.total_wt_ton, 0)
-  const openCount = data.filter((r) => !OPEN_EXCLUDED.includes(r.current_status)).length
-  const underClearance = data.filter((r) => r.current_status === 'Under Custom Clearance').length
-  const supplierCount = new Set(data.map((r) => r.supplier)).size
-
-  const trend = weeklyTrendPoints(data.map((r) => ({ date: r.demand_date, value: r.total_value_pkr / 1_000_000 })))
-    .map((p) => ({ week: shortDate(p.week), value: Number(p.value.toFixed(2)) }))
-
-  const statusCounts = importStatusList.map((s) => ({ label: s, value: data.filter((r) => r.current_status === s).length }))
-    .filter((s) => s.value > 0)
-  const byCountry = sumBy(data, 'supplier_country').slice(0, 8)
-  const byCategory = sumBy(data, 'category')
-  const bySupplier = sumBy(data, 'supplier').slice(0, 8)
-
-  const columns: Column[] = [
-    { key: 'import_ref', label: 'Import Ref' },
-    { key: 'customer', label: 'Customer' },
-    { key: 'supplier', label: 'Supplier' },
-    { key: 'supplier_country', label: 'Country' },
-    { key: 'total_value_pkr', label: 'Value', align: 'right', render: (row) => money(row.total_value_pkr as number) },
-    { key: 'total_wt_ton', label: 'Weight (t)', align: 'right' },
-    { key: 'current_status', label: 'Status', render: (row) => <StatusBadge label={row.current_status as string} /> },
-  ]
+  const trend =
+    data?.consignments.monthly_value_trend.map((p) => ({ month: p.month, value: Number((p.value / 1_000_000).toFixed(2)) })) ?? []
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title="Imports" subtitle="Import shipments, values, and customs clearance" module="imports" />
 
-      <FilterBar search={{ value: search, onChange: setSearch, placeholder: 'Search by import ref, customer, or supplier…' }}>
-        <DateRangeFilter label="ETA" from={dateFrom} to={dateTo} onFromChange={setDateFrom} onToChange={setDateTo} />
-        <MultiSelectFilter label="Works" options={importBranchList} value={branch} onChange={setBranch} />
-        <MultiSelectFilter label="Supplier" options={importSupplierList} value={supplier} onChange={setSupplier} />
-        <MultiSelectFilter label="Customer" options={importCustomerList} value={customer} onChange={setCustomer} />
-        <MultiSelectFilter label="Country" options={importCountryList} value={country} onChange={setCountry} />
-        <MultiSelectFilter label="Item Category" options={importCategoryList} value={category} onChange={setCategory} />
-        <MultiSelectFilter label="Show imports" options={importStatusList} value={status} onChange={setStatus} />
-        <MultiSelectFilter label="Documentation Status" options={importDocumentationStatusList} value={documentationStatus} onChange={setDocumentationStatus} />
+      <FilterBar>
+        <DateRangeFilter label="ETA at Works" from={dateFrom} to={dateTo} onFromChange={setDateFrom} onToChange={setDateTo} />
+        <SingleSelectFilter label="Works" options={data?.works ?? []} value={works} onChange={setWorks} />
+        <SingleSelectFilter label="Supplier" options={data?.suppliers ?? []} value={supplier} onChange={setSupplier} />
+        <SingleSelectFilter label="Country" options={data?.countries ?? []} value={country} onChange={setCountry} />
+        <SingleSelectFilter label="Item Category" options={data?.item_categories ?? []} value={itemCategory} onChange={setItemCategory} />
+        <SingleSelectFilter label="Status" options={data?.status ?? []} value={status} onChange={setStatus} />
       </FilterBar>
 
-      <Disclosure title="More filters — shipping line, mode, bank">
-        <div className="flex flex-wrap gap-4 pb-4">
-          {[
-            { label: 'Shipping Line', options: importShippingLineList, value: shippingLine, onChange: setShippingLine },
-            { label: 'Mode of Shipment', options: importModeOfShipmentList, value: modeOfShipment, onChange: setModeOfShipment },
-            { label: 'Bank', options: importBankList, value: bank, onChange: setBank },
-          ].map((f) => (
-            <div key={f.label} className="w-56">
-              <MultiSelectFilter label={f.label} options={f.options} value={f.value} onChange={f.onChange} />
-            </div>
-          ))}
-        </div>
-      </Disclosure>
+      {isLoading && (
+        <Card>
+          <CardContent className="p-8 text-center text-sm text-muted">Loading live data…</CardContent>
+        </Card>
+      )}
 
-      <HeroStat
-        label="Total Value"
-        value={money(totalValue)}
-        trendData={trend}
-        trendX="week"
-        trendY="value"
-        caption="PKR millions per week, current filter"
-      />
+      {isError && (
+        <Card>
+          <CardContent className="flex items-start gap-2 p-5 text-sm text-risk">
+            <ShieldAlert size={16} className="mt-0.5 shrink-0" />
+            <span>
+              {error instanceof ApiError && error.status === 401
+                ? 'Signed in, but not with an account the backend recognizes yet — only the seeded admin account has live access right now.'
+                : 'Could not reach the backend — is it running?'}
+            </span>
+          </CardContent>
+        </Card>
+      )}
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-        <KpiCard label="Total Weight" value={`${totalWeight.toLocaleString()} t`} />
-        <KpiCard label="Shipments Shown" value={data.length.toLocaleString()} />
-        <KpiCard label="Open" value={`${openCount}`} sub="not yet arrived/cancelled" />
-        <KpiCard label="Under Clearance" value={`${underClearance}`} direction={underClearance ? 'up' : null} goodWhen="down" />
-        <KpiCard label="Suppliers" value={`${supplierCount}`} />
-      </div>
+      {data && (
+        <>
+          <HeroStat
+            label="Total Value"
+            value={money(data.consignments.kpis.total_value_pkr)}
+            trendData={trend}
+            trendX="month"
+            trendY="value"
+            caption="PKR millions per month, current filter"
+          />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <InsightsCard title="Insights" tabs={INSIGHT_TABS} active={insightTab} onChange={setInsightTab} className="lg:col-span-2">
-          {data.length === 0 && <p className="py-12 text-center text-sm text-muted">No imports match the current filter.</p>}
-          {data.length > 0 && insightTab === 'status' && (
-            <Donut labels={statusCounts.map((s) => s.label)} values={statusCounts.map((s) => s.value)} height={300} />
-          )}
-          {data.length > 0 && insightTab === 'country' && <RankedBar data={byCountry} category="supplier_country" value="total_value_pkr" height={300} />}
-          {data.length > 0 && insightTab === 'category' && <CategoryBar data={byCategory} category="category" value="total_value_pkr" height={300} />}
-        </InsightsCard>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <KpiCard label="Consignments" value={data.consignments.kpis.consignments_shown.toLocaleString()} />
+            <KpiCard label="Open" value={`${data.consignments.kpis.open}`} sub="not yet arrived at works" />
+            <KpiCard
+              label="Under Clearance"
+              value={`${data.consignments.kpis.under_clearance}`}
+              direction={data.consignments.kpis.under_clearance ? 'up' : null}
+              goodWhen="down"
+            />
+            <KpiCard label="Suppliers" value={`${data.consignments.kpis.suppliers}`} />
+          </div>
 
-        <ChartCard title="Top Suppliers (value)">
-          {bySupplier.length > 0
-            ? <RankedBar data={bySupplier} category="supplier" value="total_value_pkr" height={300} />
-            : <p className="py-12 text-center text-sm text-muted">No supplier data in the current view.</p>}
-        </ChartCard>
-      </div>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <ChartCard title="Value by Country (PKR millions)" className="lg:col-span-2">
+              {data.consignments.value_by_country.length > 0 ? (
+                <RankedBar data={toMillions(data.consignments.value_by_country)} category="label" value="value" height={280} />
+              ) : (
+                <p className="py-12 text-center text-sm text-muted">No country data in the current view.</p>
+              )}
+            </ChartCard>
 
-      <Disclosure title="View data">
-        <div className="pb-4">
-          <DataTable columns={columns} rows={tableRows as unknown as Record<string, unknown>[]} statusColumn="current_status" height={420} />
-        </div>
-      </Disclosure>
+            <ChartCard title="Status Split">
+              {data.consignments.status_split.length > 0 ? (
+                <Donut
+                  labels={data.consignments.status_split.map((s) => s.label)}
+                  values={data.consignments.status_split.map((s) => s.value)}
+                  height={260}
+                />
+              ) : (
+                <p className="py-12 text-center text-sm text-muted">No status breakdown yet.</p>
+              )}
+            </ChartCard>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <ChartCard title="Value by Supplier (PKR millions)">
+              {data.consignments.value_by_supplier.length > 0 ? (
+                <RankedBar data={toMillions(data.consignments.value_by_supplier)} category="label" value="value" height={300} />
+              ) : (
+                <p className="py-12 text-center text-sm text-muted">No supplier data in the current view.</p>
+              )}
+            </ChartCard>
+
+            <ChartCard title="Value by Branch (PKR millions)">
+              {data.consignments.value_by_branch.length > 0 ? (
+                <RankedBar data={toMillions(data.consignments.value_by_branch)} category="label" value="value" height={300} />
+              ) : (
+                <p className="py-12 text-center text-sm text-muted">No branch data in the current view.</p>
+              )}
+            </ChartCard>
+          </div>
+        </>
+      )}
     </div>
   )
 }

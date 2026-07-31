@@ -24,7 +24,7 @@ export function TrendLine({ data, x, y, height = 300, onDark = false }: Props) {
 
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <AreaChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+      <AreaChart data={data} margin={{ top: 10, right: 28, left: 0, bottom: 0 }}>
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={lineColor} stopOpacity={onDark ? 0.35 : 0.28} />
@@ -38,6 +38,7 @@ export function TrendLine({ data, x, y, height = 300, onDark = false }: Props) {
           axisLine={{ stroke: gridColor }}
           tickLine={false}
           interval={Math.max(0, Math.ceil(data.length / 8) - 1)}
+          padding={{ left: 12, right: 12 }}
         />
         <YAxis tick={{ fill: tickColor, fontSize: 12 }} axisLine={false} tickLine={false} />
         <Tooltip {...(onDark ? { ...tooltipStyle, contentStyle: { ...tooltipStyle.contentStyle, background: '#1F1B4D' } } : tooltipStyle)} />

@@ -13,5 +13,10 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // Bound to localhost only by default, which the backend's SameSite=Lax
+    // auth cookie treats as a different site than 127.0.0.1 — the browser
+    // then won't attach it on API calls. Listening on both keeps whichever
+    // host you open the app on cookie-compatible with the backend.
+    host: true,
   },
 })
