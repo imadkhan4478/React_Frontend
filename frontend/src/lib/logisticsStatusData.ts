@@ -123,7 +123,6 @@ function makeItems(orderKey: string): LogisticsItem[] {
       itemDetail: pick(CATALOGUE),
       quantity: randInt(50, 5000),
       unitWeight,
-      grossWeight: randInt(200, 18000),
       plannedRfdDate: rng() > 0.15 ? addDays('2026-04-01', randInt(0, 90)) : '',
       actualRfdDate: rng() > 0.5 ? addDays('2026-04-10', randInt(0, 95)) : '',
       rfdHistory: makeRfdHistory(itemKey),

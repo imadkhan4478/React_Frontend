@@ -65,7 +65,9 @@ export type RfdChangeEvent = z.infer<typeof rfdChangeEventSchema>
 /**
  * One line per item. Simplified from the previous version: IDM, export number,
  * and batch number are removed. Net weight is DERIVED (quantity × unitWeight),
- * never a direct input.
+ * never a direct input. Gross weight is not tracked per item — it belongs to
+ * packages (see totalPackageGrossWeight), since a package's gross weight
+ * includes packaging materials, not just the raw item weight.
  */
 export const logisticsItemSchema = z.object({
   id: z.string(),
@@ -73,7 +75,6 @@ export const logisticsItemSchema = z.object({
   itemDetail: z.string().default(''),
   quantity: optionalNumber,
   unitWeight: optionalNumber,
-  grossWeight: optionalNumber,
   plannedRfdDate: z.string().optional(),
   actualRfdDate: z.string().optional(),
   rfdHistory: z.array(rfdChangeEventSchema).default([]),
@@ -82,7 +83,7 @@ export type LogisticsItem = z.infer<typeof logisticsItemSchema>
 
 export const emptyItem = (id: string): LogisticsItem => ({
   id, jobNo: '', itemDetail: '', quantity: undefined, unitWeight: undefined,
-  grossWeight: undefined, plannedRfdDate: '', actualRfdDate: '', rfdHistory: [],
+  plannedRfdDate: '', actualRfdDate: '', rfdHistory: [],
 })
 
 // --- Step 1: Order details --------------------------------------------------
@@ -397,15 +398,6 @@ export const totalQuantity = (items: LogisticsItem[]) =>
 
 export const totalNetWeight = (items: LogisticsItem[]) =>
   items.reduce((s, it) => s + itemNetWeight(it), 0)
-
-export const totalGrossWeight = (items: LogisticsItem[]) =>
-  items.reduce((s, it) => s + (it.grossWeight ?? 0), 0)
-
-export function ratePerWeight(actualFreight: number | undefined, items: LogisticsItem[]): number | null {
-  const gross = totalGrossWeight(items)
-  if (!actualFreight || !gross) return null
-  return actualFreight / gross
-}
 
 /** Merged order type label for the list: "Cement Export", "General Local", etc. */
 export function orderTypeLabel(department: Department, orderType: OrderType): string {

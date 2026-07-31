@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { useAuth } from '@/features/auth/AuthContext'
 import { can } from '@/lib/roleAccess'
 import {
-  totalNetWeight, totalGrossWeight, orderTypeLabel, jobNumbers, batchDisplayLabel,
+  totalNetWeight, totalPackageGrossWeight, orderTypeLabel, jobNumbers, batchDisplayLabel,
 } from '@/features/logisticsStatus/schema'
 import {
   getLogisticsOrders, deriveImportFobRequests,
@@ -81,7 +81,7 @@ export function LogisticsStatusList() {
       orderTypeLabel(o.department, o.orderType),
       jobNumbers(o.items).join('; '), o.customerName,
       o.items.map((it) => `${it.itemDetail} ×${it.quantity ?? 0}`).join('; '),
-      totalNetWeight(o.items), totalGrossWeight(o.items),
+      totalNetWeight(o.items), totalPackageGrossWeight(o.packages),
       o.packages.length, o.packages.find((p) => p.packingWorks)?.packingWorks ?? '', o.incoterm ?? '',
       o.orderType === 'Export' ? o.originCountry : `${o.originCity}, ${o.originProvince}`,
       o.status, o.gateOutDate, o.sentToTrucking ? 'Yes' : 'No',
@@ -207,7 +207,7 @@ export function LogisticsStatusList() {
                       {o.packages.length === 0 ? '—' : `${o.packages.length} pkg${o.packages.length === 1 ? '' : 's'}${colours.length ? ` (${colours.join(', ')})` : ''}`}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{num(totalNetWeight(o.items))}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{num(totalGrossWeight(o.items))}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{num(totalPackageGrossWeight(o.packages))}</td>
                     <td className="px-3 py-2 text-[13px] text-muted">{works || '—'}</td>
                     <td className="px-3 py-2 text-[13px]">{o.incoterm || '—'}</td>
                     <td className="px-3 py-2">

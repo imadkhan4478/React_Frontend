@@ -29,8 +29,9 @@ function DerivedField({ label, value, derivation }: { label: string; value: stri
  *
  * Order-level fields (department, type, origin, customer, MO no., batch,
  * incoterm) apply to the whole order. Job#, item detail, quantity, unit
- * weight, gross weight, and the Planned/Actual RFD dates are per item — an
- * order can bundle several items, each running its own production timeline.
+ * weight, and the Planned/Actual RFD dates are per item — an order can
+ * bundle several items, each running its own production timeline. Gross
+ * weight is not tracked here — it's a package-level figure (see Step 2).
  *
  * Items are simplified from the previous design: no IDM, export number, or
  * batch number on the item line — those concepts moved to (or were replaced
@@ -208,11 +209,6 @@ export function Step1Order() {
                     value={netWeight ? netWeight.toLocaleString() : '—'}
                     derivation="Quantity × unit weight"
                   />
-
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor={`items.${i}.grossWeight`}>Gross Weight (kg)</Label>
-                    <Input id={`items.${i}.grossWeight`} type="number" step="0.01" {...register(`items.${i}.grossWeight`)} />
-                  </div>
 
                   <div className="flex flex-col gap-1.5">
                     <Label htmlFor={`items.${i}.plannedRfdDate`}>Planned RFD Date</Label>
