@@ -59,8 +59,8 @@ export function SortableTable<T>({
   }
 
   return (
-    <div className="overflow-auto rounded-xl border border-line" style={{ maxHeight }}>
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto overflow-y-auto rounded-xl border border-line [scrollbar-width:auto]" style={{ maxHeight }}>
+      <table className="w-full min-w-[960px] text-sm">
         <thead className="sticky top-0 z-10 bg-canvas-alt">
           <tr>
             {columns.map((col) => {

@@ -11,6 +11,7 @@ import { useAuth } from '@/features/auth/AuthContext'
 import { can } from '@/lib/roleAccess'
 import {
   totalNetWeight, totalPackageGrossWeight, orderTypeLabel, jobNumbers, batchDisplayLabel,
+  arrivalDelayDays,
 } from '@/features/logisticsStatus/schema'
 import {
   getLogisticsOrders, deriveImportFobRequests,
@@ -20,6 +21,27 @@ import {
 import { getTruckingReadthrough } from '@/lib/truckingStatusData'
 
 const num = (v: number) => v.toLocaleString('en-US')
+
+/**
+ * Consistent delay pill used across the status modules: red when late, green
+ * when on time / early, muted dash when there's no data. `settled` means the
+ * real arrival date is in — an unsettled positive delay is an in-flight
+ * estimate ("slipping"), which reads differently from a locked-in late.
+ */
+function DelayCell({ days, settled }: { days: number | null; settled: boolean }) {
+  if (days === null) return <span className="text-muted" title="No planned arrival date yet">—</span>
+  if (days <= 0) {
+    return <span className="tabular-nums text-[var(--color-healthy)]">{days === 0 ? 'on time' : `${-days}d early`}</span>
+  }
+  return (
+    <span
+      className="inline-block rounded border border-[var(--color-risk)] bg-[var(--color-risk-bg)] px-1.5 py-0.5 text-[11px] tabular-nums text-[var(--color-risk)]"
+      title={settled ? 'Arrived later than planned' : 'Past planned arrival, still in transit'}
+    >
+      {days}d {settled ? 'late' : 'slipping'}
+    </span>
+  )
+}
 
 function TruckingHandoffBadge({ order }: { order: LogisticsOrder }) {
   if (!order.sentToTrucking) {
@@ -154,8 +176,8 @@ export function LogisticsStatusList() {
           </CardContent>
         </Card>
       ) : (
-        <div className="overflow-auto rounded-xl border border-line bg-surface">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-xl border border-line bg-surface [scrollbar-width:auto]">
+          <table className="w-full min-w-[1000px] text-sm">
             <thead className="bg-canvas-alt text-xs text-muted">
               <tr>
                 <th className="px-3 py-2 text-left">MO #</th>
@@ -170,6 +192,7 @@ export function LogisticsStatusList() {
                 <th className="px-3 py-2 text-left">Works</th>
                 <th className="px-3 py-2 text-left">Incoterm</th>
                 <th className="px-3 py-2 text-left">Status</th>
+                <th className="px-3 py-2 text-right">Arrival delay</th>
                 <th className="px-3 py-2 text-left">Sent to Trucking</th>
                 <th className="px-3 py-2 text-left"></th>
               </tr>
@@ -219,6 +242,9 @@ export function LogisticsStatusList() {
                     <td className="px-3 py-2">
                       <StatusBadge label={o.status} />
                     </td>
+                    <td className="px-3 py-2 text-right">
+                      <DelayCell days={arrivalDelayDays(o)} settled={!!o.actualArrivalDate} />
+                    </td>
                     <td className="px-3 py-2">
                       <TruckingHandoffBadge order={o} />
                     </td>
@@ -256,8 +282,8 @@ export function LogisticsStatusList() {
             <span className="rounded-full bg-[var(--color-watch-bg)] px-2 py-0.5 text-[11px] text-[var(--color-watch)]">{fobRequests.length}</span>
             <span className="text-xs text-muted">FOB imports needing shipping &amp; clearing-agent arrangement — managed in Imports Status</span>
           </div>
-          <div className="overflow-auto rounded-xl border border-line bg-surface">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto rounded-xl border border-line bg-surface [scrollbar-width:auto]">
+            <table className="w-full min-w-[900px] text-sm">
               <thead className="bg-canvas-alt text-xs text-muted">
                 <tr>
                   <th className="px-3 py-2 text-left">Source consignment</th>
