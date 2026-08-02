@@ -388,6 +388,19 @@ export function daysBetween(fromISO?: string, toISO?: string): number | null {
   return Math.round((b - a) / 86_400_000)
 }
 
+/**
+ * Arrival delay in days: how late the goods actually arrived versus the CRO
+ * (planned) arrival. Positive = late, negative = early, null when either date
+ * is missing so "no data" and "on time" stay visually distinct. Uses actual
+ * arrival where known; falls back to today for an in-flight estimate so a
+ * shipment already past its planned date shows as slipping, not blank.
+ */
+export function arrivalDelayDays(o: { croArrivalDate?: string; actualArrivalDate?: string }): number | null {
+  if (!o.croArrivalDate) return null
+  const end = o.actualArrivalDate || new Date().toISOString().slice(0, 10)
+  return daysBetween(o.croArrivalDate, end)
+}
+
 /** Net weight for one item — DERIVED, quantity × unitWeight. */
 export function itemNetWeight(item: Pick<LogisticsItem, 'quantity' | 'unitWeight'>): number {
   return (item.quantity ?? 0) * (item.unitWeight ?? 0)
