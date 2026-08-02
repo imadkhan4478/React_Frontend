@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { useAuth } from '@/features/auth/AuthContext'
 import { can } from '@/lib/roleAccess'
 import {
-  totalNetWeight, totalGrossWeight, orderTypeLabel, jobNumbers, batchDisplayLabel,
+  totalNetWeight, totalPackageGrossWeight, orderTypeLabel, jobNumbers, batchDisplayLabel,
 } from '@/features/logisticsStatus/schema'
 import {
   getLogisticsOrders, deriveImportFobRequests,
@@ -43,11 +43,13 @@ function TruckingHandoffBadge({ order }: { order: LogisticsOrder }) {
 /**
  * Logistics Status — list view.
  *
- * Columns per the confirmed spec: MO # (with system id), merged
- * department+order-type label, Job #s, Customer, Batch # (with an MO-group
- * accent when siblings are visible), Items, Packages, Net/Gross Weight,
- * Works (first package's packing works), Incoterm — plus Status and actions,
- * which every other list in this app keeps.
+ * Columns per the confirmed spec: MO # (the system id itself — see
+ * generateLogisticsSystemId in lib/logisticsStatusData.ts — with the batch
+ * label alongside for Batch 2+), merged department+order-type label, Job #s,
+ * Customer, Batch # (with an MO-group accent when siblings are visible),
+ * Items, Packages, Net/Gross Weight, Works (first package's packing works),
+ * Incoterm — plus Status and actions, which every other list in this app
+ * keeps.
  *
  * Below the orders table, a read-only "Open Requests: Import FOB" feed (FOB
  * imports needing Logistics to arrange sea freight and a clearing agent —
@@ -81,7 +83,7 @@ export function LogisticsStatusList() {
       orderTypeLabel(o.department, o.orderType),
       jobNumbers(o.items).join('; '), o.customerName,
       o.items.map((it) => `${it.itemDetail} ×${it.quantity ?? 0}`).join('; '),
-      totalNetWeight(o.items), totalGrossWeight(o.items),
+      totalNetWeight(o.items), totalPackageGrossWeight(o.packages),
       o.packages.length, o.packages.find((p) => p.packingWorks)?.packingWorks ?? '', o.incoterm ?? '',
       o.orderType === 'Export' ? o.originCountry : `${o.originCity}, ${o.originProvince}`,
       o.status, o.gateOutDate, o.sentToTrucking ? 'Yes' : 'No',
@@ -186,8 +188,12 @@ export function LogisticsStatusList() {
                     onClick={() => navigate(`/logistics-status/${o.systemId}`)}
                   >
                     <td className="px-3 py-2">
-                      <div className="tabular-nums font-semibold">{o.moNo || '—'}</div>
-                      <div className="text-[11px] tabular-nums text-muted">{o.systemId}</div>
+                      <div className="tabular-nums font-semibold">
+                        {o.systemId}
+                        {o.batchNo > 1 && (
+                          <span className="ml-1 font-normal text-muted">({batchDisplayLabel(o.batchNo, o.batchLabel)})</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-3 py-2">{orderTypeLabel(o.department, o.orderType)}</td>
                     <td className="px-3 py-2 text-[13px] tabular-nums" title={jobNos.join(', ') || undefined}>
@@ -207,7 +213,7 @@ export function LogisticsStatusList() {
                       {o.packages.length === 0 ? '—' : `${o.packages.length} pkg${o.packages.length === 1 ? '' : 's'}${colours.length ? ` (${colours.join(', ')})` : ''}`}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{num(totalNetWeight(o.items))}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{num(totalGrossWeight(o.items))}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{num(totalPackageGrossWeight(o.packages))}</td>
                     <td className="px-3 py-2 text-[13px] text-muted">{works || '—'}</td>
                     <td className="px-3 py-2 text-[13px]">{o.incoterm || '—'}</td>
                     <td className="px-3 py-2">

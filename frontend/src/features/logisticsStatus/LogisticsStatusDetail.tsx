@@ -7,10 +7,10 @@ import { useAuth } from '@/features/auth/AuthContext'
 import { can } from '@/lib/roleAccess'
 import {
   WIZARD_STEPS, daysBetween, marketingDelay, buildRemarksFeed,
-  totalQuantity, totalNetWeight, totalGrossWeight, orderTypeLabel, batchDisplayLabel,
-  packingDelay, packingSavings, outstandingByItem, totalPackageNetWeight, totalPackageGrossWeight,
+  totalQuantity, totalNetWeight, orderTypeLabel, batchDisplayLabel,
+  packingDelay, packingSavings, totalPackageNetWeight, totalPackageGrossWeight,
 } from './schema'
-import { getLogisticsOrder, getCrossBatchItems } from '@/lib/logisticsStatusData'
+import { getLogisticsOrder, getCrossBatchItems, outstandingByItemAcrossMo } from '@/lib/logisticsStatusData'
 import { getTruckingReadthrough } from '@/lib/truckingStatusData'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -83,9 +83,8 @@ export default function LogisticsStatusDetail() {
 
   const qty = totalQuantity(row.items)
   const netW = totalNetWeight(row.items)
-  const grossW = totalGrossWeight(row.items)
   const arrivalDelay = daysBetween(row.croArrivalDate, row.actualArrivalDate)
-  const outstanding = outstandingByItem(row.items, row.packages)
+  const outstanding = outstandingByItemAcrossMo(row.items, row.packages, row.moNo, row.systemId)
   const allItems = [...row.items, ...crossBatchItems.map((c) => c.item)]
   const totalPkgNet = totalPackageNetWeight(row.packages, allItems)
   const totalPkgGross = totalPackageGrossWeight(row.packages)
@@ -131,7 +130,7 @@ export default function LogisticsStatusDetail() {
       {/* key figures */}
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-3 lg:grid-cols-6">
         <KeyFigure label="Total quantity" value={num(qty)} sub={`${row.items.length} item line${row.items.length === 1 ? '' : 's'}`} />
-        <KeyFigure label="Total weight" value={`${num(grossW)} kg`} sub={`${num(netW)} kg net`} />
+        <KeyFigure label="Total weight" value={`${num(totalPkgGross)} kg`} sub={`${num(netW)} kg net`} />
         <KeyFigure label="MO No." value={row.moNo || '—'} sub={batchDisplayLabel(row.batchNo, row.batchLabel)} />
         <KeyFigure label="Packages" value={row.packages.length ? String(row.packages.length) : '—'} sub={row.packages.length ? `${row.packages.filter((p) => p.status === 'Packed').length} packed` : 'None yet'} />
         <KeyFigure label="Expenditure" value={pkr(costTotal || undefined)} sub={`${costs.length} cost line${costs.length === 1 ? '' : 's'} tracked`} />
@@ -167,7 +166,6 @@ export default function LogisticsStatusDetail() {
                 <th className="px-3 py-2 text-left">Item</th>
                 <th className="px-3 py-2 text-right">Quantity</th>
                 <th className="px-3 py-2 text-right">Net wt (kg)</th>
-                <th className="px-3 py-2 text-right">Gross wt (kg)</th>
                 <th className="px-3 py-2 text-left">Planned RFD</th>
                 <th className="px-3 py-2 text-left">Actual RFD</th>
               </tr>
@@ -179,7 +177,6 @@ export default function LogisticsStatusDetail() {
                   <td className="px-3 py-2">{it.itemDetail || <span className="italic text-muted">Not named</span>}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{it.quantity !== undefined ? num(it.quantity) : '—'}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{num(it.quantity !== undefined && it.unitWeight !== undefined ? it.quantity * it.unitWeight : 0)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{it.grossWeight !== undefined ? num(it.grossWeight) : '—'}</td>
                   <td className="px-3 py-2 tabular-nums">{dateShort(it.plannedRfdDate)}</td>
                   <td className="px-3 py-2 tabular-nums">{dateShort(it.actualRfdDate)}</td>
                 </tr>
@@ -191,7 +188,6 @@ export default function LogisticsStatusDetail() {
                 <td className="px-3 py-2" />
                 <td className="px-3 py-2 text-right tabular-nums">{num(qty)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{num(netW)}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{num(grossW)}</td>
                 <td colSpan={2} />
               </tr>
             </tfoot>

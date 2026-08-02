@@ -25,6 +25,7 @@ import * as importsData from '@/lib/importsStatusData'
 // direction (Trucking → Logistics/Imports); mirroring that keeps the import
 // graph one-directional.
 import type { TruckingReadthrough } from '@/features/logisticsStatus/schema'
+import { itemNetWeight } from '@/features/logisticsStatus/schema'
 
 /**
  * Mock data layer for Trucking Status, mirroring lib/logisticsStatusData.ts.
@@ -413,11 +414,14 @@ export function takeAction(sourceType: 'from-logistics' | 'from-import-fob', sou
             quantity: pkg.allocations.reduce((s, a) => s + (a.quantity ?? 0), 0),
             weight: pkg.grossWeight,
           }))
+        // No packages yet — fall back to net weight (quantity × unit weight),
+        // since items don't carry their own gross weight (that's a
+        // package-level figure once the order reaches Packing).
         : order.items.map((it) => ({
             label: it.itemDetail || 'Item',
             itemDetails: it.itemDetail,
             quantity: it.quantity,
-            weight: it.grossWeight,
+            weight: itemNetWeight(it),
           }))
       const first = order.items[0]
       const more = order.items.length - 1
