@@ -43,11 +43,13 @@ function TruckingHandoffBadge({ order }: { order: LogisticsOrder }) {
 /**
  * Logistics Status — list view.
  *
- * Columns per the confirmed spec: MO # (with system id), merged
- * department+order-type label, Job #s, Customer, Batch # (with an MO-group
- * accent when siblings are visible), Items, Packages, Net/Gross Weight,
- * Works (first package's packing works), Incoterm — plus Status and actions,
- * which every other list in this app keeps.
+ * Columns per the confirmed spec: MO # (the system id itself — see
+ * generateLogisticsSystemId in lib/logisticsStatusData.ts — with the batch
+ * label alongside for Batch 2+), merged department+order-type label, Job #s,
+ * Customer, Batch # (with an MO-group accent when siblings are visible),
+ * Items, Packages, Net/Gross Weight, Works (first package's packing works),
+ * Incoterm — plus Status and actions, which every other list in this app
+ * keeps.
  *
  * Below the orders table, a read-only "Open Requests: Import FOB" feed (FOB
  * imports needing Logistics to arrange sea freight and a clearing agent —
@@ -186,8 +188,12 @@ export function LogisticsStatusList() {
                     onClick={() => navigate(`/logistics-status/${o.systemId}`)}
                   >
                     <td className="px-3 py-2">
-                      <div className="tabular-nums font-semibold">{o.moNo || '—'}</div>
-                      <div className="text-[11px] tabular-nums text-muted">{o.systemId}</div>
+                      <div className="tabular-nums font-semibold">
+                        {o.systemId}
+                        {o.batchNo > 1 && (
+                          <span className="ml-1 font-normal text-muted">({batchDisplayLabel(o.batchNo, o.batchLabel)})</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-3 py-2">{orderTypeLabel(o.department, o.orderType)}</td>
                     <td className="px-3 py-2 text-[13px] tabular-nums" title={jobNos.join(', ') || undefined}>

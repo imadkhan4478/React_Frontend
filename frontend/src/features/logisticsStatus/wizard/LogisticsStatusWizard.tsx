@@ -11,8 +11,9 @@ import { can } from '@/lib/roleAccess'
 import {
   getLogisticsOrder, updateLogisticsOrder, createLogisticsOrder,
   saveLogisticsDraft, getLogisticsDraft, isKnownLogisticsOrder,
+  generateLogisticsSystemId, nextBatchNoForMo,
 } from '@/lib/logisticsStatusData'
-import { consignmentDraftSchema, DRAFT_DEFAULT_VALUES, WIZARD_STEPS, type LogisticsDraft } from '../schema'
+import { consignmentDraftSchema, DRAFT_DEFAULT_VALUES, WIZARD_STEPS, emptyItem, type LogisticsDraft } from '../schema'
 import { WizardStepper } from './WizardStepper'
 import { UnsavedChangesDialog } from './UnsavedChangesDialog'
 import { Step1Order } from './steps/Step1Order'
@@ -41,6 +42,21 @@ function normalizeForDirtyCheck(value: unknown): unknown {
   return value
 }
 const snapshot = (v: unknown) => JSON.stringify(normalizeForDirtyCheck(v))
+
+/**
+ * DRAFT_DEFAULT_VALUES is a single shared module-level object — its seed
+ * item's id ("item-1") is a fixed literal, not generated per order. That's
+ * harmless in isolation, but outstandingByItemAcrossMo now matches
+ * allocations across sibling batches BY ITEM ID, so two unrelated brand-new
+ * orders both starting from the same literal "item-1" would collide the
+ * moment they share an MO: an allocation against one order's "item-1" would
+ * incorrectly count against the other's. Regenerating the seed item's id
+ * here (once per fresh /new session, not on every render — see the lazy
+ * useState below) keeps every new order's starting item globally unique.
+ */
+function freshDraftDefaults(): LogisticsDraft {
+  return { ...DRAFT_DEFAULT_VALUES, items: [emptyItem(`item-${crypto.randomUUID()}`)] }
+}
 
 export function LogisticsStatusWizard() {
   const { user } = useAuth()
@@ -76,15 +92,22 @@ export function LogisticsStatusWizard() {
   // is exactly the bug this two-tier draft/real split avoids.
   const isNew = !id || !isKnownLogisticsOrder(id)
 
+  // Computed once per mounted instance (lazy useState initializer) so the
+  // SAME object seeds both useForm's defaultValues and the dirty baseline
+  // below — calling freshDraftDefaults() separately in two places would mint
+  // two different random item ids and make the form read as dirty on the
+  // very first render.
+  const [initialValues] = useState<LogisticsDraft>(() => existingOrder ?? draft ?? freshDraftDefaults())
+
   const methods = useForm<z.input<typeof consignmentDraftSchema>, unknown, LogisticsDraft>({
     resolver: zodResolver(consignmentDraftSchema),
-    defaultValues: existingOrder ?? draft ?? DRAFT_DEFAULT_VALUES,
+    defaultValues: initialValues,
     mode: 'onBlur',
   })
   // Manual dirty tracking against a normalized baseline snapshot rather than
   // react-hook-form's own `formState.isDirty` — see the matching note in
   // features/importsStatus/wizard/ImportsStatusWizard.tsx.
-  const baselineRef = useRef(snapshot(existingOrder ?? draft ?? DRAFT_DEFAULT_VALUES))
+  const baselineRef = useRef(snapshot(initialValues))
   const isFormDirty = () => snapshot(methods.getValues()) !== baselineRef.current
 
   // Same actions the list/detail views gate on — a viewer or a user without
@@ -99,7 +122,19 @@ export function LogisticsStatusWizard() {
       // first Next (bare /new, no id yet) mints one. Minting a fresh id on
       // every step here would silently start a new, disconnected record
       // each time, since nothing would ever tie steps 2-5 back to step 1.
-      const targetId = id ?? crypto.randomUUID()
+      let targetId = id
+      if (!targetId) {
+        // The system id is MO-based (see generateLogisticsSystemId), so
+        // batchNo has to be resolved first. Step 1's own onBlur/onChange
+        // handler already does this as the user types the MO number — this
+        // is a defensive re-resolve right before minting, so correctness
+        // doesn't depend on that handler having fired (e.g. clicking Next
+        // without ever blurring the field).
+        const values = methods.getValues()
+        const resolvedBatchNo = nextBatchNoForMo(values.moNo ?? '')
+        if (resolvedBatchNo !== values.batchNo) methods.setValue('batchNo', resolvedBatchNo)
+        targetId = generateLogisticsSystemId(values.moNo, resolvedBatchNo)
+      }
       // /new and /:id/edit/:step are separate <Route> entries (see App.tsx),
       // so this specific transition — and ONLY this one, since every later
       // step-to-step move matches the same :id/edit/:step route — genuinely

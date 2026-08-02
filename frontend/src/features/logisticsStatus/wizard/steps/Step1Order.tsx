@@ -1,10 +1,15 @@
+import { useEffect } from 'react'
+import { useParams } from 'react-router-dom'
 import { useFormContext, useFieldArray, useWatch } from 'react-hook-form'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import {
   ORDER_TYPES, DEPARTMENTS, INCOTERMS, emptyItem, itemPendingFields, itemNetWeight, batchDisplayLabel,
-  type LogisticsDraft, type LogisticsItem,
+  type LogisticsDraft, type LogisticsItem, type LogisticsPackage,
 } from '../../schema'
+import {
+  isKnownLogisticsOrder, nextBatchNoForMo, getMoGroupSummary, getCrossBatchItems, outstandingByItemAcrossMo,
+} from '@/lib/logisticsStatusData'
 
 const selectClass =
   'flex h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink ' +
@@ -50,12 +55,38 @@ function DerivedField({ label, value, derivation }: { label: string; value: stri
  * actually known — see the comment there.
  */
 export function Step1Order() {
-  const { register, control, watch, formState: { errors } } = useFormContext<LogisticsDraft>()
+  const { id } = useParams<{ id: string }>()
+  const { register, control, watch, setValue, formState: { errors } } = useFormContext<LogisticsDraft>()
   // Single rules driver for the screen — origin shape keys off this.
   const orderType = useWatch({ control, name: 'orderType' })
   const isExport = orderType === 'Export'
   const batchNo = useWatch({ control, name: 'batchNo' })
   const batchLabel = useWatch({ control, name: 'batchLabel' })
+  const moNo = useWatch({ control, name: 'moNo' }) ?? ''
+  const packages = (useWatch({ control, name: 'packages' }) ?? []) as LogisticsPackage[]
+
+  // isNew mirrors the wizard's own definition (a real record already exists
+  // vs. still-in-progress creation) — only a new order's batchNo should be
+  // auto-driven by the MO field; an existing order's batchNo was assigned
+  // once at creation and must not silently shift just from revisiting Step 1.
+  const isNew = !id || !isKnownLogisticsOrder(id)
+  const excludeId = id ?? ''
+  const moSummary = getMoGroupSummary(moNo, excludeId)
+  const nextBatch = nextBatchNoForMo(moNo)
+
+  // Auto-detect: as soon as the MO field resolves to an existing (or newly
+  // empty) value, keep batchNo in sync — batch 1 for no MO / a brand-new MO,
+  // one past the highest sibling batch for an MO that already exists. This
+  // runs on every moNo change (not just onBlur) so the "Batch" display and
+  // the cross-batch preview below update live as the user types, and it's
+  // gated on isNew so editing an existing order never reassigns its batch.
+  useEffect(() => {
+    if (!isNew) return
+    if (nextBatch !== batchNo) setValue('batchNo', nextBatch, { shouldDirty: false })
+  }, [isNew, nextBatch, batchNo, setValue])
+
+  const crossBatchItems = getCrossBatchItems(moNo, excludeId)
+  const crossOutstanding = outstandingByItemAcrossMo(crossBatchItems.map((c) => c.item), packages, moNo, excludeId)
 
   const { fields, append, remove } = useFieldArray({ control, name: 'items' })
   const items = watch('items')
@@ -119,9 +150,16 @@ export function Step1Order() {
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="moNo">MO No. <span className="font-normal text-muted">(optional)</span></Label>
             <Input id="moNo" placeholder="Marketing/Manufacturing Order no." {...register('moNo')} />
-            <p className="text-xs text-muted">
-              Entering an MO that already exists auto-creates this order as the next batch under it.
-            </p>
+            {isNew && moSummary ? (
+              <p className="text-xs text-brand">
+                MO {moNo} already exists with {moSummary.itemCount} item{moSummary.itemCount === 1 ? '' : 's'} across{' '}
+                {moSummary.batchCount} batch{moSummary.batchCount === 1 ? '' : 'es'} — creating Batch {nextBatch}.
+              </p>
+            ) : (
+              <p className="text-xs text-muted">
+                Entering an MO that already exists auto-creates this order as the next batch under it.
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -236,6 +274,50 @@ export function Step1Order() {
           </div>
         </div>
       </section>
+
+      {/* read-only preview of sibling batches' items — context for the
+          cross-batch allocation the user will do in Step 2 (Packing) */}
+      {crossBatchItems.length > 0 && (
+        <section className="rounded-xl border border-line bg-canvas-alt/30">
+          <h3 className="border-b border-line px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted">
+            Items from previous batches — read-only, shared under MO {moNo}
+          </h3>
+          <div className="overflow-x-auto p-4">
+            <table className="w-full text-left text-sm">
+              <thead className="text-xs text-muted">
+                <tr>
+                  <th className="pb-1 pr-3">Batch</th>
+                  <th className="pb-1 pr-3">Job #</th>
+                  <th className="pb-1 pr-3">Item</th>
+                  <th className="pb-1 pr-3">Quantity</th>
+                  <th className="pb-1">Outstanding</th>
+                </tr>
+              </thead>
+              <tbody>
+                {crossBatchItems.map((c) => {
+                  const rest = crossOutstanding[c.item.id] ?? c.item.quantity ?? 0
+                  return (
+                    <tr key={`${c.sourceOrderId}-${c.item.id}`} className="border-t border-line">
+                      <td className="py-1.5 pr-3 text-muted">{c.sourceBatchLabel}</td>
+                      <td className="py-1.5 pr-3 tabular-nums text-muted">{c.item.jobNo || '—'}</td>
+                      <td className="py-1.5 pr-3">{c.item.itemDetail || <span className="italic text-muted">Not named</span>}</td>
+                      <td className="py-1.5 pr-3 tabular-nums text-muted">{c.item.quantity ?? '—'}</td>
+                      <td className="py-1.5 tabular-nums">
+                        {rest === 0
+                          ? <span className="text-[var(--color-healthy)]">Fully allocated</span>
+                          : <span className={rest < 0 ? 'text-[var(--color-risk)]' : 'text-[var(--color-watch)]'}>{rest}</span>}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="px-4 pb-3 text-xs text-muted">
+            Not editable here — allocate against these in Packing (Step 2). You can still add new items to this batch above.
+          </p>
+        </section>
+      )}
     </div>
   )
 }

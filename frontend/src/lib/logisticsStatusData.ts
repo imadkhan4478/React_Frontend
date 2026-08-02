@@ -7,6 +7,7 @@ import {
   recordRfdChange,
   nextBatchNo,
   batchDisplayLabel,
+  outstandingByItem,
   type LogisticsDraft,
   type LogisticsItem,
   type LogisticsContainer,
@@ -217,7 +218,9 @@ function buildOrderPlans(total: number): OrderPlan[] {
 
 function makeOrder(i: number, plan: OrderPlan): LogisticsOrder {
   const orderKey = String(240 - i)
-  const systemId = `LOG-2026-${orderKey.padStart(4, '0')}`
+  // MO-based id (see moBasedSystemId below) when the order has an MO number;
+  // otherwise a deterministic sequential fallback, never a UUID.
+  const systemId = moBasedSystemId(plan.moNo, plan.batchNo) ?? `LOG-2026-${orderKey.padStart(4, '0')}`
   const orderType: OrderType = pick(ORDER_TYPES)
   const department: Department = pick(DEPARTMENTS)
   const isExport = orderType === 'Export'
@@ -356,6 +359,92 @@ export function nextBatchNoForMo(moNo: string): number {
 }
 
 /**
+ * The MO-based half of the system id rule: Batch 1 under an MO IS that MO
+ * number; Batch 2+ appends "-B{batchNo}". Returns null when there's no MO
+ * number, so callers fall back to a sequential id — never a UUID.
+ */
+function moBasedSystemId(moNo: string | undefined, batchNo: number): string | null {
+  const trimmed = moNo?.trim()
+  if (!trimmed) return null
+  return batchNo > 1 ? `${trimmed}-B${batchNo}` : trimmed
+}
+
+/** Sequential fallback for orders with no MO number: "LOG-{year}-####", one
+ *  past the highest sequence already in the store this year. */
+function nextSequentialSystemId(): string {
+  const prefix = `LOG-${new Date().getFullYear()}-`
+  const seqs = ALL
+    .map((o) => o.systemId)
+    .filter((sid) => sid.startsWith(prefix))
+    .map((sid) => Number(sid.slice(prefix.length)))
+    .filter((n) => Number.isFinite(n))
+  const next = seqs.length ? Math.max(...seqs) + 1 : 1
+  return `${prefix}${String(next).padStart(4, '0')}`
+}
+
+/**
+ * System id for a NEW order, per the confirmed rule:
+ *   - MO number + Batch 1  -> the MO number itself (e.g. "MO-2026-001")
+ *   - MO number + Batch 2+ -> "{moNo}-B{batchNo}" (e.g. "MO-2026-001-B2")
+ *   - No MO number          -> sequential "LOG-{year}-####", never a UUID
+ *
+ * Deterministic from (moNo, batchNo) in the MO case, so the wizard must
+ * resolve batchNo (via nextBatchNoForMo) BEFORE calling this — see
+ * LogisticsStatusWizard's commitNavigate.
+ *
+ * Known limitation (acceptable for this mock/demo data layer): batchNo is
+ * only resolved against `ALL` (real, submitted orders), not `DRAFTS`. Two
+ * concurrent in-progress creations under the same brand-new MO would both
+ * resolve to Batch 1 and collide. A real backend would allocate the batch
+ * number atomically at submit time instead.
+ */
+export function generateLogisticsSystemId(moNo: string | undefined, batchNo: number): string {
+  return moBasedSystemId(moNo, batchNo) ?? nextSequentialSystemId()
+}
+
+/** Every package belonging to sibling batches under the same MO (excluding
+ *  the given order itself) — used to compute outstanding quantity across the
+ *  whole MO group, since a sibling batch's package can allocate against this
+ *  order's items too (and vice versa). */
+export function getSiblingPackages(moNo: string | undefined, excludeSystemId: string): LogisticsPackage[] {
+  if (!moNo) return []
+  return ALL
+    .filter((o) => o.moNo === moNo && o.systemId !== excludeSystemId)
+    .flatMap((o) => o.packages)
+}
+
+/** Outstanding quantity for a set of items, accounting for allocations
+ *  across EVERY package in the MO group — the item's own batch's packages
+ *  (ownPackages, typically the in-progress form's own `packages` field) PLUS
+ *  every sibling batch's packages, not just one or the other. This is what
+ *  makes Step 1's "items from previous batches" preview and Step 2's
+ *  cross-batch allocation section show the true remaining quantity instead
+ *  of the sibling's full order quantity. */
+export function outstandingByItemAcrossMo(
+  items: LogisticsItem[],
+  ownPackages: LogisticsPackage[],
+  moNo: string | undefined,
+  excludeSystemId: string,
+): Record<string, number> {
+  const allPackages = [...ownPackages, ...getSiblingPackages(moNo, excludeSystemId)]
+  return outstandingByItem(items, allPackages)
+}
+
+/** Summary of an existing MO group, for the "MO already exists" indicator on
+ *  Step 1 — null when the MO doesn't exist yet (or is empty). Excludes the
+ *  given order itself so editing an existing order doesn't count it as its
+ *  own sibling. */
+export function getMoGroupSummary(moNo: string, excludeSystemId: string): { batchCount: number; itemCount: number } | null {
+  if (!moNo.trim()) return null
+  const siblings = ALL.filter((o) => o.moNo === moNo && o.systemId !== excludeSystemId)
+  if (siblings.length === 0) return null
+  return {
+    batchCount: siblings.length,
+    itemCount: siblings.reduce((s, o) => s + o.items.length, 0),
+  }
+}
+
+/**
  * Mutates the in-memory mock store — same convention as updateConsignment in
  * lib/importsStatusData.ts.
  *
@@ -391,13 +480,13 @@ export function updateLogisticsOrder(systemId: string, data: LogisticsDraft, cha
 
 /**
  * Persists a brand-new order — called only from the wizard's final Submit.
- * The wizard mints its own id (crypto.randomUUID(), the same pattern
- * Trucking's taken jobs use) the moment Step 1's Next is clicked, well
- * before Submit — so by the time this runs, `systemId` already appears in
- * every URL the user has been navigating through. Reusing it (rather than
- * generating a fresh LOG-2026-XXXX id here) is what makes
- * getLogisticsOrder(id) find the record immediately after Submit. Clears
- * the in-progress draft cache entry (see below) since the order is now real.
+ * The wizard mints its own id (generateLogisticsSystemId, MO-based — see
+ * that function) the moment Step 1's Next is clicked, well before Submit —
+ * so by the time this runs, `systemId` already appears in every URL the
+ * user has been navigating through. Reusing it (rather than generating a
+ * fresh id here) is what makes getLogisticsOrder(id) find the record
+ * immediately after Submit. Clears the in-progress draft cache entry (see
+ * below) since the order is now real.
  */
 export function createLogisticsOrder(systemId: string, data: LogisticsDraft): void {
   ALL.push({ ...data, systemId })

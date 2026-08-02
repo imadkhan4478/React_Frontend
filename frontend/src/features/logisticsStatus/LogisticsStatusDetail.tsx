@@ -8,9 +8,9 @@ import { can } from '@/lib/roleAccess'
 import {
   WIZARD_STEPS, daysBetween, marketingDelay, buildRemarksFeed,
   totalQuantity, totalNetWeight, orderTypeLabel, batchDisplayLabel,
-  packingDelay, packingSavings, outstandingByItem, totalPackageNetWeight, totalPackageGrossWeight,
+  packingDelay, packingSavings, totalPackageNetWeight, totalPackageGrossWeight,
 } from './schema'
-import { getLogisticsOrder, getCrossBatchItems } from '@/lib/logisticsStatusData'
+import { getLogisticsOrder, getCrossBatchItems, outstandingByItemAcrossMo } from '@/lib/logisticsStatusData'
 import { getTruckingReadthrough } from '@/lib/truckingStatusData'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -84,7 +84,7 @@ export default function LogisticsStatusDetail() {
   const qty = totalQuantity(row.items)
   const netW = totalNetWeight(row.items)
   const arrivalDelay = daysBetween(row.croArrivalDate, row.actualArrivalDate)
-  const outstanding = outstandingByItem(row.items, row.packages)
+  const outstanding = outstandingByItemAcrossMo(row.items, row.packages, row.moNo, row.systemId)
   const allItems = [...row.items, ...crossBatchItems.map((c) => c.item)]
   const totalPkgNet = totalPackageNetWeight(row.packages, allItems)
   const totalPkgGross = totalPackageGrossWeight(row.packages)

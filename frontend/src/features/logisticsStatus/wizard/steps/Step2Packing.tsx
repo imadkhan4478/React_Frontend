@@ -3,9 +3,9 @@ import { useFormContext, useFieldArray, useWatch } from 'react-hook-form'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { QG_FACTORIES } from '@/features/truckingStatus/schema'
-import { getCrossBatchItems } from '@/lib/logisticsStatusData'
+import { getCrossBatchItems, outstandingByItemAcrossMo } from '@/lib/logisticsStatusData'
 import {
-  PACKING_STATUSES, emptyPackage, packingDelay, packingSavings, outstandingByItem,
+  PACKING_STATUSES, emptyPackage, packingDelay, packingSavings,
   totalPackageGrossWeight, totalPackageNetWeight,
   type LogisticsDraft, type LogisticsPackage, type LogisticsItem, type PackageAllocation, type CrossBatchItem,
 } from '../../schema'
@@ -35,12 +35,16 @@ function DerivedField({ label, value, derivation }: { label: string; value: stri
  * cross-batch item never collides with a same-id local one.
  */
 function AllocationRow({
-  pkgIndex, item, sourceOrderId, sourceBatchLabel, allocations, onChange,
+  pkgIndex, item, sourceOrderId, sourceBatchLabel, qty, allocations, onChange,
 }: {
   pkgIndex: number
   item: LogisticsItem
   sourceOrderId: string
   sourceBatchLabel?: string
+  /** The quantity shown in the second column — the item's own order quantity
+   *  for local items, or its outstanding quantity (across the whole MO
+   *  group) for cross-batch items — see the two call sites below. */
+  qty: number | undefined
   allocations: PackageAllocation[]
   onChange: (next: PackageAllocation[]) => void
 }) {
@@ -60,7 +64,7 @@ function AllocationRow({
         {item.itemDetail || <span className="italic text-muted">Not named</span>}
         {sourceBatchLabel && <span className="ml-1.5 text-[11px] text-muted">({sourceBatchLabel})</span>}
       </td>
-      <td className="py-1.5 pr-3 text-muted">{item.quantity ?? '—'}</td>
+      <td className="py-1.5 pr-3 text-muted">{qty ?? '—'}</td>
       <td className="py-1.5">
         <input
           type="number"
@@ -100,7 +104,11 @@ export function Step2Packing() {
   const crossBatchItems: CrossBatchItem[] = id && moNo ? getCrossBatchItems(moNo, id) : []
   const allItems = [...items, ...crossBatchItems.map((c) => c.item)]
 
-  const outstanding = outstandingByItem(items, packages)
+  // MO-aware: accounts for allocations across every sibling batch's
+  // packages too, not just this order's own — a sibling package can draw
+  // against this order's items, and vice versa.
+  const outstanding = outstandingByItemAcrossMo(items, packages, moNo, id ?? '')
+  const crossOutstanding = outstandingByItemAcrossMo(crossBatchItems.map((c) => c.item), packages, moNo, id ?? '')
   const totalNet = totalPackageNetWeight(packages, allItems)
   const totalGross = totalPackageGrossWeight(packages)
 
@@ -211,6 +219,7 @@ export function Step2Packing() {
                           pkgIndex={i}
                           item={item}
                           sourceOrderId={id ?? ''}
+                          qty={item.quantity}
                           allocations={allocations}
                           onChange={(next) => setValue(`packages.${i}.allocations`, next, { shouldDirty: true })}
                         />
@@ -231,7 +240,7 @@ export function Step2Packing() {
                       <thead className="text-xs text-muted">
                         <tr>
                           <th className="pb-1 pr-3">Item</th>
-                          <th className="pb-1 pr-3">Order qty</th>
+                          <th className="pb-1 pr-3">Outstanding</th>
                           <th className="pb-1">In this package</th>
                         </tr>
                       </thead>
@@ -243,6 +252,7 @@ export function Step2Packing() {
                             item={c.item}
                             sourceOrderId={c.sourceOrderId}
                             sourceBatchLabel={c.sourceBatchLabel}
+                            qty={crossOutstanding[c.item.id]}
                             allocations={allocations}
                             onChange={(next) => setValue(`packages.${i}.allocations`, next, { shouldDirty: true })}
                           />
