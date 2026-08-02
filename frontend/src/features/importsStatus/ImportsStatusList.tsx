@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { useAuth } from '@/features/auth/AuthContext'
 import { can } from '@/lib/roleAccess'
 import { SortableTable, type SortableColumn } from './components/SortableTable'
+import { exportListExcel, exportListPdf, type ListColumn } from '@/lib/listExport'
 import { StatusPill, Tag, PaymentDot } from './components/atoms'
 import { pkr, fx, dateShort, days as daysFmt, num } from './format'
 import {
@@ -236,39 +237,40 @@ export function ImportsStatusList() {
   ]
 
   /* exports run on the current filtered set — the single most-wanted behaviour */
-  const exportCsv = () => {
-    const cols = [
-      'Consignment ID', 'Branch', 'Supplier', 'Origin', 'Requisition', 'Status',
-      'ETD', 'ETA', 'ETA revisions', 'Slippage (days)', 'Currency', 'Value (foreign)',
-      'Exchange rate', 'Rate date', 'Value (PKR)', 'Payment', 'Clearing agent',
-      'Gate out', 'Missing fields',
-    ]
-    const line = (r: ConsignmentRow) => [
-      r.systemId, r.branch, r.supplier, r.origin, r.requisitionSummary, r.status,
-      r.etd ?? '', r.eta ?? '', r.etaHistory.length, slippageDays(r) ?? '',
-      r.currency, r.foreignValue, r.exchangeRate, r.rateDate, Math.round(pkrValue(r)),
-      r.paymentLabel, r.clearingAgent ?? '', r.gateOut ?? '', r.missing.join('; '),
-    ].map((v) => {
-      const s = String(v ?? '')
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-    }).join(',')
-
-    const csv = [cols.join(','), ...rows.map(line)].join('\r\n')
-    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `consignments_${new Date().toISOString().slice(0, 10)}.csv`
-    a.click()
-    URL.revokeObjectURL(a.href)
-  }
+  const exportColumns: ListColumn<ConsignmentRow>[] = [
+    { header: 'Consignment ID', value: (r) => r.systemId },
+    { header: 'Reference', value: (r) => r.instrumentNo ?? '' },
+    { header: 'Branch', value: (r) => r.branch },
+    { header: 'Supplier', value: (r) => r.supplier },
+    { header: 'Origin', value: (r) => r.origin },
+    { header: 'Requisition', value: (r) => r.requisitionSummary },
+    { header: 'Status', value: (r) => r.status },
+    { header: 'ETD', value: (r) => r.etd ?? '' },
+    { header: 'ETA', value: (r) => r.eta ?? '' },
+    { header: 'ETA revisions', value: (r) => r.etaHistory.length },
+    { header: 'Slippage (days)', value: (r) => slippageDays(r) ?? '' },
+    { header: 'Required delay (days)', value: (r) => requiredDelayDays(r) ?? '' },
+    { header: 'Currency', value: (r) => r.currency },
+    { header: 'Value (foreign)', value: (r) => r.foreignValue },
+    { header: 'Exchange rate', value: (r) => r.exchangeRate },
+    { header: 'Rate date', value: (r) => r.rateDate },
+    { header: 'Value (PKR)', value: (r) => Math.round(pkrValue(r)) },
+    { header: 'Payment', value: (r) => r.paymentLabel },
+    { header: 'Clearing agent', value: (r) => r.clearingAgent ?? '' },
+    { header: 'Gate out', value: (r) => r.gateOut ?? '' },
+    { header: 'Missing fields', value: (r) => r.missing.join('; ') },
+  ]
+  const stamp = () => new Date().toISOString().slice(0, 10)
+  const doExcel = () => exportListExcel(rows, exportColumns, `consignments_${stamp()}.xlsx`, 'Consignments')
+  const doPdf = () => exportListPdf(rows, exportColumns, `consignments_${stamp()}.pdf`, 'Consignments')
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PageHeader title="Consignments" subtitle={`${rows.length} shown`} module="importsStatus" />
         <div className="flex gap-2">
-          <Button variant="outline" onClick={exportCsv}>Export Excel</Button>
-          <Button variant="outline" onClick={() => window.print()}>Export PDF</Button>
+          <Button variant="outline" onClick={doExcel}>Export Excel</Button>
+          <Button variant="outline" onClick={doPdf}>Export PDF</Button>
           {can(user, 'enter') && (
             <Button asChild>
               <Link to="/imports-status/new">New consignment</Link>

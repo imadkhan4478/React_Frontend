@@ -9,6 +9,7 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { useAuth } from '@/features/auth/AuthContext'
 import { can } from '@/lib/roleAccess'
 import { MOVEMENT_TYPES, TRUCKING_SOURCES, vehicleCount } from './schema'
+import { exportListExcel, exportListPdf, type ListColumn } from '@/lib/listExport'
 import {
   getTruckingJobs,
   rollupLabel,
@@ -95,39 +96,36 @@ export function TruckingStatusList() {
     navigate(`/trucking-status/${newId}/edit/1`)
   }
 
-  function exportCsv() {
-    const header = [
-      'ID', 'Source', 'Movement', 'Transporter', 'Pickup', 'Destination',
-      'Reference', 'Vehicles', 'Gross (kg)', 'Tracking', 'Quoted', 'Actual', 'Payment', 'Execution date',
-    ]
-    const line = (r: TruckingRow) =>
-      [
-        r.systemId, sourceLabel(r.source), r.movementType, r.transporterName ?? '',
-        r.pickup ?? '', r.destination ?? '', r.referenceNo ?? '', vehicleCount(r.vehicles),
-        rowGrossWeight(r).toFixed(2), rollupLabel(r), r.quotedFreight ?? '', r.actualFreight ?? '',
-        r.paymentStatus ?? '', r.executionDate ?? '',
-      ]
-        .map((c) => `"${String(c).replace(/"/g, '""')}"`)
-        .join(',')
-    const csv = [header.join(','), ...requests.map(line), ...jobs.map(line)].join('\n')
-    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `trucking-status-${new Date().toISOString().slice(0, 10)}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
+  const exportColumns: ListColumn<TruckingRow>[] = [
+    { header: 'ID', value: (r) => r.systemId },
+    { header: 'Source', value: (r) => sourceLabel(r.source) },
+    { header: 'Movement', value: (r) => r.movementType },
+    { header: 'Transporter', value: (r) => r.transporterName ?? '' },
+    { header: 'Pickup', value: (r) => r.pickup ?? '' },
+    { header: 'Destination', value: (r) => r.destination ?? '' },
+    { header: 'Reference', value: (r) => r.referenceNo ?? '' },
+    { header: 'Vehicles', value: (r) => vehicleCount(r.vehicles) },
+    { header: 'Gross (kg)', value: (r) => Number(rowGrossWeight(r).toFixed(2)) },
+    { header: 'Tracking', value: (r) => rollupLabel(r) },
+    { header: 'Quoted', value: (r) => r.quotedFreight ?? '' },
+    { header: 'Actual', value: (r) => r.actualFreight ?? '' },
+    { header: 'Payment', value: (r) => r.paymentStatus ?? '' },
+    { header: 'Execution date', value: (r) => r.executionDate ?? '' },
+  ]
+  const exportRows = () => [...requests, ...jobs]
+  const stamp = () => new Date().toISOString().slice(0, 10)
+  const doExcel = () => exportListExcel(exportRows(), exportColumns, `trucking-status-${stamp()}.xlsx`, 'Trucking')
+  const doPdf = () => exportListPdf(exportRows(), exportColumns, `trucking-status-${stamp()}.pdf`, 'Trucking Status')
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PageHeader title="Trucking Status" subtitle="Vehicle movements & open requests" module="truckingStatus" />
         <div className="flex gap-2">
-          <Button variant="outline" onClick={exportCsv}>
+          <Button variant="outline" onClick={doExcel}>
             <Download size={16} /> Excel
           </Button>
-          <Button variant="outline" onClick={() => window.print()}>
+          <Button variant="outline" onClick={doPdf}>
             <Printer size={16} /> PDF
           </Button>
           {can(user, 'enter') && (
