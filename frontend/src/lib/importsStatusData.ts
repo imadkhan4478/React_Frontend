@@ -67,6 +67,11 @@ export interface ConsignmentItemRow {
   requisitionType: string
   referenceNo: string
   hsCode: string | null
+  netWeight: number | null   // kg for the line's full quantity
+  grossWeight: number | null // kg incl. packaging
+  length: number | null      // cm
+  width: number | null
+  height: number | null
 }
 
 export interface ConsignmentRow {
@@ -121,13 +126,23 @@ function makeRow(i: number): ConsignmentRow {
   const items: ConsignmentItemRow[] = Array.from({ length: lineCount }, () => {
     const [name, code, uom] = pick(CATALOGUE)
     const req = pick(REQUISITION_LABELS)
+    const qty = randInt(4, 400)
+    // ~70% of lines have weight/dims entered; the rest are still pending the
+    // imports team filling them in before an FOB handoff.
+    const hasWtl = rng() > 0.3
+    const net = hasWtl ? qty * (randInt(5, 60) / 10) : null // ~0.5–6 kg/unit
     return {
-      itemName: name, itemCode: code, quantity: randInt(4, 400), uom,
+      itemName: name, itemCode: code, quantity: qty, uom,
       requisitionType: req,
       referenceNo:
         req === 'Store' ? `STR-2026-${randInt(800, 999)}`
         : req === 'Engineering' ? `ENG-2026-${randInt(400, 499)}` : '',
       hsCode: rng() > 0.25 ? `${randInt(7000, 8500)}.${randInt(10, 99)}.00` : null,
+      netWeight: net,
+      grossWeight: net !== null ? Math.round(net * (1.05 + rng() * 0.15)) : null,
+      length: hasWtl ? randInt(20, 120) : null,
+      width: hasWtl ? randInt(20, 100) : null,
+      height: hasWtl ? randInt(15, 90) : null,
     }
   })
   const requisitionSummary = [...new Set(items.map((it) => it.requisitionType))].join(' + ')
@@ -205,6 +220,23 @@ const ALL: ConsignmentRow[] = Array.from({ length: 34 }, (_, i) => makeRow(i))
 
 /* -- derived --------------------------------------------------------- */
 export const pkrValue = (r: ConsignmentRow) => r.foreignValue * r.exchangeRate
+
+/** Total gross weight across a consignment's item lines, in kg. Null only when
+ *  NO line has a weight yet (so "not entered" stays distinct from a real 0). */
+export const consignmentGrossWeight = (r: Pick<ConsignmentRow, 'items'>): number | null => {
+  const withWt = r.items.filter((it) => it.grossWeight != null)
+  if (withWt.length === 0) return null
+  return withWt.reduce((s, it) => s + (it.grossWeight ?? 0), 0)
+}
+export const consignmentNetWeight = (r: Pick<ConsignmentRow, 'items'>): number | null => {
+  const withWt = r.items.filter((it) => it.netWeight != null)
+  if (withWt.length === 0) return null
+  return withWt.reduce((s, it) => s + (it.netWeight ?? 0), 0)
+}
+/** True when at least one line is still missing weight — used to flag an FOB
+ *  consignment that isn't ready to hand to trucking. */
+export const consignmentWeightPending = (r: Pick<ConsignmentRow, 'items'>): boolean =>
+  r.items.some((it) => it.grossWeight == null)
 
 export const slippageDays = (r: ConsignmentRow) =>
   r.etaHistory.length && r.eta
@@ -326,6 +358,9 @@ const DRAFTS: Record<string, ConsignmentDraft> = {}
 const REQ_LABEL_TO_TYPE: Record<string, RequisitionType> = {
   Store: 'store', Engineering: 'engineering', Others: 'others',
 }
+const REQ_TYPE_TO_LABEL: Record<string, string> = {
+  store: 'Store', engineering: 'Engineering', others: 'Others',
+}
 
 function rowToDraft(row: ConsignmentRow): ConsignmentDraft {
   return {
@@ -347,6 +382,11 @@ function rowToDraft(row: ConsignmentRow): ConsignmentDraft {
       requisitionType: REQ_LABEL_TO_TYPE[it.requisitionType],
       referenceNo: it.referenceNo,
       hsCode: it.hsCode ?? '',
+      netWeight: it.netWeight ?? undefined,
+      grossWeight: it.grossWeight ?? undefined,
+      length: it.length ?? undefined,
+      width: it.width ?? undefined,
+      height: it.height ?? undefined,
     })),
     paymentInstrument: row.paymentInstrument as ConsignmentDraft['paymentInstrument'],
     instrumentNo: row.instrumentNo ?? '',
@@ -408,4 +448,26 @@ export function updateConsignment(systemId: string, data: ConsignmentDraft): voi
   row.instrumentNo = data.instrumentNo || row.instrumentNo
   row.freeDays = data.freeDays ?? row.freeDays
   row.gateOut = data.gateOutDate || row.gateOut
+
+  // Rebuild the flat item rows from the draft so per-item edits — including
+  // the weight/dimension fields the trucking hand-off reads — actually
+  // persist to what the list and cross-module derivations see. Previously
+  // this function only patched header fields and silently dropped item edits.
+  if (data.items?.length) {
+    row.items = data.items.map((it) => ({
+      itemName: it.itemName ?? '',
+      itemCode: it.itemCode ?? '',
+      quantity: it.quantity ?? 0,
+      uom: it.uom ?? '',
+      requisitionType: REQ_TYPE_TO_LABEL[it.requisitionType ?? ''] ?? it.requisitionType ?? '',
+      referenceNo: it.referenceNo ?? '',
+      hsCode: it.hsCode || null,
+      netWeight: it.netWeight ?? null,
+      grossWeight: it.grossWeight ?? null,
+      length: it.length ?? null,
+      width: it.width ?? null,
+      height: it.height ?? null,
+    }))
+    row.requisitionSummary = [...new Set(row.items.map((it) => it.requisitionType))].join(' + ')
+  }
 }

@@ -120,6 +120,16 @@ export const consignmentItemSchema = z.object({
 
   // step 2 — pricing is per item
   foreignUnitPrice: optionalNumber,
+
+  // Weight & dimensions — optional at draft, but the imports team is expected
+  // to fill these before an FOB consignment is handed to trucking, since the
+  // truck load-out and freight rate depend on them. Surfaced as "expected"
+  // (not hard-required) so an early draft isn't blocked.
+  netWeight: optionalNumber,   // kg per item line (total for its quantity)
+  grossWeight: optionalNumber, // kg incl. packaging
+  length: optionalNumber,      // cm
+  width: optionalNumber,       // cm
+  height: optionalNumber,      // cm
 })
 export type ConsignmentItem = z.infer<typeof consignmentItemSchema>
 
@@ -396,6 +406,7 @@ export const emptyItem = (id: string): ConsignmentItem => ({
   referenceNo: '', jobNo: '', moNo: '', othersDescription: '',
   itemId: '', itemName: '', itemCode: '', specification: '',
   quantity: undefined, uom: '', batchNo: '', hsCode: '',
+  netWeight: undefined, grossWeight: undefined, length: undefined, width: undefined, height: undefined,
   foreignUnitPrice: undefined,
 })
 

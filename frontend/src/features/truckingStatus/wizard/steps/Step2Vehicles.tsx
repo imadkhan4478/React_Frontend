@@ -103,9 +103,21 @@ function ImportConsignmentAllocation({
   const refs = thisVehicle?.importConsignmentRefs ?? []
 
   function toggle(consignmentId: string, checked: boolean) {
+    const opt = options.find((o) => o.systemId === consignmentId)
     const next = checked
-      ? [...refs, { consignmentId }]
+      ? [...refs, {
+          consignmentId,
+          // Pre-fill from the consignment's real gross weight; the trucking
+          // user can override per vehicle afterwards (goods may split trucks).
+          grossWeight: opt?.grossWeight ?? undefined,
+          label: opt?.label,
+        }]
       : refs.filter((r) => r.consignmentId !== consignmentId)
+    setValue(`vehicles.${vehicleIndex}.importConsignmentRefs`, next, { shouldDirty: true })
+  }
+
+  function setRefWeight(consignmentId: string, grossWeight: number | undefined) {
+    const next = refs.map((r) => (r.consignmentId === consignmentId ? { ...r, grossWeight } : r))
     setValue(`vehicles.${vehicleIndex}.importConsignmentRefs`, next, { shouldDirty: true })
   }
 
@@ -122,11 +134,29 @@ function ImportConsignmentAllocation({
                 checked={checked}
                 onChange={(e) => toggle(o.systemId, e.target.checked)}
               />
-              {o.label}
+              <span className="flex-1">{o.label}</span>
+              {checked && (
+                <span className="flex items-center gap-1 text-xs text-muted">
+                  <Input
+                    type="number"
+                    value={refs.find((r) => r.consignmentId === o.systemId)?.grossWeight ?? ''}
+                    onChange={(e) => setRefWeight(o.systemId, e.target.value === '' ? undefined : Number(e.target.value))}
+                    className="h-7 w-24 text-right"
+                    placeholder="kg"
+                  />
+                  kg
+                </span>
+              )}
             </label>
           )
         })}
       </div>
+      {refs.length > 0 && (
+        <p className="mt-2 text-xs text-muted">
+          {refs.length} consignment{refs.length === 1 ? '' : 's'} on this vehicle ·{' '}
+          {refs.reduce((sum, r) => sum + (r.grossWeight ?? 0), 0).toLocaleString()} kg total
+        </p>
+      )}
     </div>
   )
 }
@@ -143,6 +173,13 @@ export function Step2Vehicles() {
   const vehicles = useWatch({ control, name: 'vehicles' })
   const grossSum = totalGrossWeight(vehicles)
   const netSum = totalNetWeight(vehicles)
+  // Weight coming from checked import consignments (pre-filled from imports,
+  // editable per vehicle) — surfaced so selecting consignments visibly
+  // changes the footer, and totalled across all vehicles.
+  const importRefGross = (v?: Vehicle) =>
+    (v?.importConsignmentRefs ?? []).reduce((s, r) => s + (r.grossWeight ?? 0), 0)
+  const importRefTotal = (vehicles ?? []).reduce((s, v) => s + importRefGross(v), 0)
+  const importRefCount = (vehicles ?? []).reduce((s, v) => s + (v?.importConsignmentRefs?.length ?? 0), 0)
 
   return (
     <div className="flex flex-col gap-4">
@@ -251,25 +288,36 @@ export function Step2Vehicles() {
                 <th className="py-1 pr-3">#</th>
                 <th className="py-1 pr-3">Vehicle No.</th>
                 <th className="py-1 pr-3">Packages</th>
+                <th className="py-1 pr-3">Consignments</th>
                 <th className="py-1 pr-3">Gross (kg)</th>
+                <th className="py-1 pr-3">Import wt (kg)</th>
                 <th className="py-1 pr-3">Tracking</th>
               </tr>
             </thead>
             <tbody className="text-ink">
-              {(vehicles ?? []).map((v, i) => (
-                <tr key={i} className="border-t border-line">
-                  <td className="py-1 pr-3">{i + 1}</td>
-                  <td className="py-1 pr-3">{v?.vehicleNumber || '—'}</td>
-                  <td className="py-1 pr-3 tabular-nums">{v?.noOfPackages ?? '—'}</td>
-                  <td className="py-1 pr-3 tabular-nums">{v?.grossWeight ?? '—'}</td>
-                  <td className="py-1 pr-3">{v?.trackingStatus || '—'}</td>
-                </tr>
-              ))}
+              {(vehicles ?? []).map((v, i) => {
+                const refs = v?.importConsignmentRefs ?? []
+                return (
+                  <tr key={i} className="border-t border-line">
+                    <td className="py-1 pr-3">{i + 1}</td>
+                    <td className="py-1 pr-3">{v?.vehicleNumber || '—'}</td>
+                    <td className="py-1 pr-3 tabular-nums">{v?.noOfPackages ?? '—'}</td>
+                    <td className="py-1 pr-3" title={refs.map((r) => r.consignmentId).join(', ') || undefined}>
+                      {refs.length === 0 ? '—' : refs.length === 1 ? refs[0].consignmentId : `${refs.length} consignments`}
+                    </td>
+                    <td className="py-1 pr-3 tabular-nums">{v?.grossWeight ?? '—'}</td>
+                    <td className="py-1 pr-3 tabular-nums">{importRefGross(v) ? importRefGross(v).toLocaleString() : '—'}</td>
+                    <td className="py-1 pr-3">{v?.trackingStatus || '—'}</td>
+                  </tr>
+                )
+              })}
             </tbody>
             <tfoot className="text-muted">
               <tr className="border-t border-line">
                 <td className="py-1 pr-3" colSpan={3}>Totals</td>
+                <td className="py-1 pr-3 tabular-nums">{importRefCount || '—'}</td>
                 <td className="py-1 pr-3 tabular-nums">{grossSum.toFixed(2)}</td>
+                <td className="py-1 pr-3 tabular-nums">{importRefTotal ? importRefTotal.toLocaleString() : '—'}</td>
                 <td className="py-1 pr-3">Net {netSum.toFixed(2)} kg</td>
               </tr>
             </tfoot>

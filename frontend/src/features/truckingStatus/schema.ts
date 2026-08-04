@@ -69,6 +69,10 @@ export type VehiclePackageRef = z.infer<typeof vehiclePackageRefSchema>
  */
 export const vehicleImportRefSchema = z.object({
   consignmentId: z.string(), // importsStatus ConsignmentRow.systemId
+  /** Pre-filled from the consignment's gross weight when checked on, but the
+   *  trucking user can override per vehicle (the goods may split across trucks). */
+  grossWeight: z.number().optional(),
+  label: z.string().optional(),
 })
 export type VehicleImportRef = z.infer<typeof vehicleImportRefSchema>
 

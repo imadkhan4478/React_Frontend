@@ -13,6 +13,8 @@ import {
   totalNetWeight, totalPackageGrossWeight, orderTypeLabel, jobNumbers, batchDisplayLabel,
   arrivalDelayDays,
 } from '@/features/logisticsStatus/schema'
+import { exportListExcel, exportListPdf, type ListColumn } from '@/lib/listExport'
+import { usePagination, Pagination, useSort, SortHeader } from '@/components/Pagination'
 import {
   getLogisticsOrders, deriveImportFobRequests,
   customerList, orderTypeList, statusList,
@@ -82,7 +84,20 @@ export function LogisticsStatusList() {
   const { user } = useAuth()
   const [filters, setFilters] = useState<LogisticsFilters>({})
 
-  const rows = useMemo(() => getLogisticsOrders(filters), [filters])
+  const rowsRaw = useMemo(() => getLogisticsOrders(filters), [filters])
+  const { sorted: rows, sort, toggle } = useSort(rowsRaw, {
+    systemId: (o) => o.systemId,
+    orderType: (o) => orderTypeLabel(o.department, o.orderType),
+    customer: (o) => o.customerName,
+    batch: (o) => o.batchNo,
+    packages: (o) => o.packages.length,
+    net: (o) => totalNetWeight(o.items),
+    gross: (o) => totalPackageGrossWeight(o.packages),
+    incoterm: (o) => o.incoterm ?? '',
+    status: (o) => o.status,
+    delay: (o) => arrivalDelayDays(o) ?? -99999,
+  })
+  const { page, pageCount, pageRows, setPage, total, pageSize } = usePagination(rows, 10)
   const fobRequests = useMemo(() => deriveImportFobRequests(), [])
   const canEdit = can(user, 'editAny')
 
@@ -94,42 +109,37 @@ export function LogisticsStatusList() {
     return m
   }, [rows])
 
-  const exportCsv = () => {
-    const cols = [
-      'System ID', 'MO No.', 'Batch', 'Department', 'Order Type', 'Job No(s).', 'Customer',
-      'Items', 'Net Weight', 'Gross Weight', 'Packages', 'Works', 'Incoterm',
-      'Origin', 'Status', 'Gate Out Date', 'Sent to Trucking',
-    ]
-    const line = (o: LogisticsOrder) => [
-      o.systemId, o.moNo ?? '', batchDisplayLabel(o.batchNo, o.batchLabel), o.department,
-      orderTypeLabel(o.department, o.orderType),
-      jobNumbers(o.items).join('; '), o.customerName,
-      o.items.map((it) => `${it.itemDetail} ×${it.quantity ?? 0}`).join('; '),
-      totalNetWeight(o.items), totalPackageGrossWeight(o.packages),
-      o.packages.length, o.packages.find((p) => p.packingWorks)?.packingWorks ?? '', o.incoterm ?? '',
-      o.orderType === 'Export' ? o.originCountry : `${o.originCity}, ${o.originProvince}`,
-      o.status, o.gateOutDate, o.sentToTrucking ? 'Yes' : 'No',
-    ].map((v) => {
-      const s = String(v ?? '')
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-    }).join(',')
-
-    const csv = [cols.join(','), ...rows.map(line)].join('\r\n')
-    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `logistics_orders_${new Date().toISOString().slice(0, 10)}.csv`
-    a.click()
-    URL.revokeObjectURL(a.href)
-  }
+  const exportColumns: ListColumn<LogisticsOrder>[] = [
+    { header: 'System ID', value: (o) => o.systemId },
+    { header: 'MO No.', value: (o) => o.moNo ?? '' },
+    { header: 'Batch', value: (o) => batchDisplayLabel(o.batchNo, o.batchLabel) },
+    { header: 'Department', value: (o) => o.department },
+    { header: 'Order Type', value: (o) => orderTypeLabel(o.department, o.orderType) },
+    { header: 'Job No(s).', value: (o) => jobNumbers(o.items).join('; ') },
+    { header: 'Customer', value: (o) => o.customerName },
+    { header: 'Items', value: (o) => o.items.map((it) => `${it.itemDetail} ×${it.quantity ?? 0}`).join('; ') },
+    { header: 'Net Weight', value: (o) => totalNetWeight(o.items) },
+    { header: 'Gross Weight', value: (o) => totalPackageGrossWeight(o.packages) },
+    { header: 'Packages', value: (o) => o.packages.length },
+    { header: 'Works', value: (o) => o.packages.find((p) => p.packingWorks)?.packingWorks ?? '' },
+    { header: 'Incoterm', value: (o) => o.incoterm ?? '' },
+    { header: 'Origin', value: (o) => (o.orderType === 'Export' ? o.originCountry ?? '' : `${o.originCity}, ${o.originProvince}`) },
+    { header: 'Status', value: (o) => o.status },
+    { header: 'Arrival delay (days)', value: (o) => arrivalDelayDays(o) ?? '' },
+    { header: 'Gate Out Date', value: (o) => o.gateOutDate ?? '' },
+    { header: 'Sent to Trucking', value: (o) => (o.sentToTrucking ? 'Yes' : 'No') },
+  ]
+  const stamp = () => new Date().toISOString().slice(0, 10)
+  const doExcel = () => exportListExcel(rows, exportColumns, `logistics_orders_${stamp()}.xlsx`, 'Logistics')
+  const doPdf = () => exportListPdf(rows, exportColumns, `logistics_orders_${stamp()}.pdf`, 'Logistics Status')
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PageHeader title="Logistics Status" subtitle={`${rows.length} shown`} module="logisticsStatus" />
         <div className="flex gap-2">
-          <Button variant="outline" onClick={exportCsv}>Export Excel</Button>
-          <Button variant="outline" onClick={() => window.print()}>Export PDF</Button>
+          <Button variant="outline" onClick={doExcel}>Export Excel</Button>
+          <Button variant="outline" onClick={doPdf}>Export PDF</Button>
           {can(user, 'enter') && (
             <Button asChild>
               <Link to="/logistics-status/new">New Logistics Order</Link>
@@ -180,25 +190,25 @@ export function LogisticsStatusList() {
           <table className="w-full min-w-[1000px] text-sm">
             <thead className="bg-canvas-alt text-xs text-muted">
               <tr>
-                <th className="px-3 py-2 text-left">MO #</th>
-                <th className="px-3 py-2 text-left">Order Type</th>
+                <SortHeader label="MO #" sortKey="systemId" sort={sort} onToggle={toggle} />
+                <SortHeader label="Order Type" sortKey="orderType" sort={sort} onToggle={toggle} />
                 <th className="px-3 py-2 text-left">Job #</th>
-                <th className="px-3 py-2 text-left">Customer</th>
-                <th className="px-3 py-2 text-left">Batch #</th>
+                <SortHeader label="Customer" sortKey="customer" sort={sort} onToggle={toggle} />
+                <SortHeader label="Batch #" sortKey="batch" sort={sort} onToggle={toggle} />
                 <th className="px-3 py-2 text-left">Items</th>
-                <th className="px-3 py-2 text-left">Packages</th>
-                <th className="px-3 py-2 text-right">Net Wt (kg)</th>
-                <th className="px-3 py-2 text-right">Gross Wt (kg)</th>
+                <SortHeader label="Packages" sortKey="packages" sort={sort} onToggle={toggle} />
+                <SortHeader label="Net Wt (kg)" sortKey="net" sort={sort} onToggle={toggle} align="right" />
+                <SortHeader label="Gross Wt (kg)" sortKey="gross" sort={sort} onToggle={toggle} align="right" />
                 <th className="px-3 py-2 text-left">Works</th>
-                <th className="px-3 py-2 text-left">Incoterm</th>
-                <th className="px-3 py-2 text-left">Status</th>
-                <th className="px-3 py-2 text-right">Arrival delay</th>
+                <SortHeader label="Incoterm" sortKey="incoterm" sort={sort} onToggle={toggle} />
+                <SortHeader label="Status" sortKey="status" sort={sort} onToggle={toggle} />
+                <SortHeader label="Arrival delay" sortKey="delay" sort={sort} onToggle={toggle} align="right" />
                 <th className="px-3 py-2 text-left">Sent to Trucking</th>
                 <th className="px-3 py-2 text-left"></th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((o) => {
+              {pageRows.map((o) => {
                 const jobNos = jobNumbers(o.items)
                 const itemsSummary = o.items.map((it) => `${it.itemDetail}${it.quantity !== undefined ? ` ×${it.quantity}` : ''}`)
                 const inMoGroup = !!o.moNo && (moCounts.get(o.moNo) ?? 0) > 1
@@ -273,6 +283,7 @@ export function LogisticsStatusList() {
           </table>
         </div>
       )}
+      <Pagination page={page} pageCount={pageCount} total={total} pageSize={pageSize} onPage={setPage} />
 
       {/* Open Requests — Import FOB (read-only; the record lives in Imports) */}
       {fobRequests.length > 0 && (

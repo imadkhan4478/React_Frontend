@@ -9,6 +9,8 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { useAuth } from '@/features/auth/AuthContext'
 import { can } from '@/lib/roleAccess'
 import { MOVEMENT_TYPES, TRUCKING_SOURCES, vehicleCount } from './schema'
+import { exportListExcel, exportListPdf, type ListColumn } from '@/lib/listExport'
+import { usePagination, Pagination, useSort, SortHeader } from '@/components/Pagination'
 import {
   getTruckingJobs,
   rollupLabel,
@@ -71,14 +73,22 @@ export function TruckingStatusList() {
     [all, executionFrom, executionTo],
   )
 
-  const jobs = useMemo(
+  const jobsRaw = useMemo(
     () =>
-      all
-        .filter((r) => !(r.open && r.source !== 'manual') && inDateRange(r))
-        .sort((a, b) => a.systemId.localeCompare(b.systemId)),
+      all.filter((r) => !(r.open && r.source !== 'manual') && inDateRange(r)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [all, executionFrom, executionTo],
   )
+  const { sorted: jobs, sort, toggle } = useSort(jobsRaw, {
+    systemId: (r) => r.systemId,
+    source: (r) => sourceLabel(r.source),
+    movement: (r) => r.movementType,
+    transporter: (r) => r.transporterName ?? '',
+    vehicles: (r) => vehicleCount(r.vehicles),
+    payment: (r) => r.paymentStatus ?? '',
+    execution: (r) => r.executionDate ?? '',
+  })
+  const { page, pageCount, pageRows: jobPage, setPage, total, pageSize } = usePagination(jobs, 10)
 
   // Export requests are always-live with no accept step (takeAction only
   // converts Logistics / Import-FOB sources), so this both narrows the type
@@ -95,39 +105,36 @@ export function TruckingStatusList() {
     navigate(`/trucking-status/${newId}/edit/1`)
   }
 
-  function exportCsv() {
-    const header = [
-      'ID', 'Source', 'Movement', 'Transporter', 'Pickup', 'Destination',
-      'Reference', 'Vehicles', 'Gross (kg)', 'Tracking', 'Quoted', 'Actual', 'Payment', 'Execution date',
-    ]
-    const line = (r: TruckingRow) =>
-      [
-        r.systemId, sourceLabel(r.source), r.movementType, r.transporterName ?? '',
-        r.pickup ?? '', r.destination ?? '', r.referenceNo ?? '', vehicleCount(r.vehicles),
-        rowGrossWeight(r).toFixed(2), rollupLabel(r), r.quotedFreight ?? '', r.actualFreight ?? '',
-        r.paymentStatus ?? '', r.executionDate ?? '',
-      ]
-        .map((c) => `"${String(c).replace(/"/g, '""')}"`)
-        .join(',')
-    const csv = [header.join(','), ...requests.map(line), ...jobs.map(line)].join('\n')
-    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `trucking-status-${new Date().toISOString().slice(0, 10)}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
+  const exportColumns: ListColumn<TruckingRow>[] = [
+    { header: 'ID', value: (r) => r.systemId },
+    { header: 'Source', value: (r) => sourceLabel(r.source) },
+    { header: 'Movement', value: (r) => r.movementType },
+    { header: 'Transporter', value: (r) => r.transporterName ?? '' },
+    { header: 'Pickup', value: (r) => r.pickup ?? '' },
+    { header: 'Destination', value: (r) => r.destination ?? '' },
+    { header: 'Reference', value: (r) => r.referenceNo ?? '' },
+    { header: 'Vehicles', value: (r) => vehicleCount(r.vehicles) },
+    { header: 'Gross (kg)', value: (r) => Number(rowGrossWeight(r).toFixed(2)) },
+    { header: 'Tracking', value: (r) => rollupLabel(r) },
+    { header: 'Quoted', value: (r) => r.quotedFreight ?? '' },
+    { header: 'Actual', value: (r) => r.actualFreight ?? '' },
+    { header: 'Payment', value: (r) => r.paymentStatus ?? '' },
+    { header: 'Execution date', value: (r) => r.executionDate ?? '' },
+  ]
+  const exportRows = () => [...requests, ...jobs]
+  const stamp = () => new Date().toISOString().slice(0, 10)
+  const doExcel = () => exportListExcel(exportRows(), exportColumns, `trucking-status-${stamp()}.xlsx`, 'Trucking')
+  const doPdf = () => exportListPdf(exportRows(), exportColumns, `trucking-status-${stamp()}.pdf`, 'Trucking Status')
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PageHeader title="Trucking Status" subtitle="Vehicle movements & open requests" module="truckingStatus" />
         <div className="flex gap-2">
-          <Button variant="outline" onClick={exportCsv}>
+          <Button variant="outline" onClick={doExcel}>
             <Download size={16} /> Excel
           </Button>
-          <Button variant="outline" onClick={() => window.print()}>
+          <Button variant="outline" onClick={doPdf}>
             <Printer size={16} /> PDF
           </Button>
           {can(user, 'enter') && (
@@ -178,6 +185,7 @@ export function TruckingStatusList() {
                   <th className="px-3 py-2">Request ID</th>
                   <th className="px-3 py-2">Source</th>
                   <th className="px-3 py-2">Movement</th>
+                  <th className="px-3 py-2">Transporter</th>
                   <th className="px-3 py-2">Route</th>
                   <th className="px-3 py-2">Reference</th>
                   <th className="px-3 py-2">Execution</th>
@@ -194,6 +202,7 @@ export function TruckingStatusList() {
                     <td className="px-3 py-2 font-medium text-ink">{r.systemId}</td>
                     <td className="px-3 py-2"><SourceTag row={r} /></td>
                     <td className="px-3 py-2">{r.movementType}</td>
+                    <td className="px-3 py-2">{r.transporterName ?? '—'}</td>
                     <td className="px-3 py-2 text-muted">{(r.pickup ?? '—')} → {(r.destination ?? '—')}</td>
                     <td className="px-3 py-2 tabular-nums">{r.referenceNo ?? '—'}</td>
                     <td className="px-3 py-2 tabular-nums">{r.executionDate ?? '—'}</td>
@@ -234,21 +243,21 @@ export function TruckingStatusList() {
           <table className="w-full min-w-[1000px] text-left text-sm">
             <thead className="bg-canvas-alt text-xs uppercase text-muted">
               <tr>
-                <th className="px-3 py-2">ID</th>
-                <th className="px-3 py-2">Source</th>
-                <th className="px-3 py-2">Movement</th>
-                <th className="px-3 py-2">Transporter</th>
+                <SortHeader label="ID" sortKey="systemId" sort={sort} onToggle={toggle} />
+                <SortHeader label="Source" sortKey="source" sort={sort} onToggle={toggle} />
+                <SortHeader label="Movement" sortKey="movement" sort={sort} onToggle={toggle} />
+                <SortHeader label="Transporter" sortKey="transporter" sort={sort} onToggle={toggle} />
                 <th className="px-3 py-2">Route</th>
-                <th className="px-3 py-2">Vehicles</th>
+                <SortHeader label="Vehicles" sortKey="vehicles" sort={sort} onToggle={toggle} />
                 <th className="px-3 py-2">Tracking</th>
-                <th className="px-3 py-2">Payment</th>
-                <th className="px-3 py-2">Execution</th>
+                <SortHeader label="Payment" sortKey="payment" sort={sort} onToggle={toggle} />
+                <SortHeader label="Execution" sortKey="execution" sort={sort} onToggle={toggle} />
                 <th className="px-3 py-2 text-right">Delay</th>
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
             <tbody>
-              {jobs.map((r) => (
+              {jobPage.map((r) => (
                 <tr
                   key={r.systemId}
                   className="cursor-pointer border-t border-line hover:bg-canvas-alt"
@@ -296,6 +305,7 @@ export function TruckingStatusList() {
             </tbody>
           </table>
         </div>
+        <Pagination page={page} pageCount={pageCount} total={total} pageSize={pageSize} onPage={setPage} />
       </section>
     </div>
   )
