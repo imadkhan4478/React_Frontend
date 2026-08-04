@@ -56,6 +56,8 @@ const statusCol: ReportColumn = {
 }
 const dateCol: ReportColumn = { key: 'date', label: 'Date', render: dateRender, text: dateText }
 const requiredDateCol: ReportColumn = { key: 'requiredDate', label: 'Required Date', render: dateRender, text: dateText }
+// PPC/Store is a date in the source data, not a PPC-vs-Store category.
+const ppcStoreCol: ReportColumn = { key: 'ppcStore', label: 'PPC / Store', render: dateRender, text: dateText }
 const typeCol: ReportColumn = {
   key: '_type', label: 'Type',
   text: (v) => String(v ?? ''),
@@ -88,7 +90,7 @@ export const COLUMNS_BY_TYPE: Record<ReportType, ReportColumn[]> = {
     plainCol('branch', 'Branch'),
     plainCol('category', 'Category'),
     plainCol('material', 'Material'),
-    plainCol('ppcStore', 'PPC / Store'),
+    ppcStoreCol,
     plainCol('mop', 'Mode of Purchase'),
     plainCol('sourcingOfficer', 'Sourcing Officer'),
     plainCol('quantity', 'Quantity', 'right'),

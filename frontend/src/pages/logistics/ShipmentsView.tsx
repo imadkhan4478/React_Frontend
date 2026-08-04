@@ -2,12 +2,9 @@ import { useMemo, useState } from 'react'
 import { FilterBar } from '@/components/FilterBar'
 import { MultiSelectFilter } from '@/components/MultiSelectFilter'
 import { DateRangeFilter } from '@/components/DateRangeFilter'
-import { Disclosure } from '@/components/Disclosure'
 import { KpiCard } from '@/components/KpiCard'
 import { InsightsCard } from '@/components/InsightsCard'
 import { ChartCard } from '@/components/ChartCard'
-import { DataTable, type Column } from '@/components/DataTable'
-import { StatusBadge } from '@/components/StatusBadge'
 import { CategoryBar } from '@/components/charts/CategoryBar'
 import { Donut } from '@/components/charts/Donut'
 import { RankedBar } from '@/components/charts/RankedBar'
@@ -40,7 +37,6 @@ export function ShipmentsView() {
   const [customer, setCustomer] = useState<string[]>([])
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
-  const [search, setSearch] = useState('')
   const [tab, setTab] = useState<(typeof TABS)[number]['value']>('status')
 
   const filtered = useMemo(
@@ -51,11 +47,6 @@ export function ShipmentsView() {
     () => filtered.filter((r) => dateInRange(r.port_in_date, dateFrom, dateTo)),
     [filtered, dateFrom, dateTo],
   )
-  const tableRows = useMemo(() => {
-    if (!search.trim()) return data
-    const needle = search.toLowerCase()
-    return data.filter((r) => [r.exp_no, r.customer, r.country].some((v) => v.toLowerCase().includes(needle)))
-  }, [data, search])
 
   const delivered = data.filter((r) => r.status === 'Delivered').length
   const unlinked = data.filter((r) => r.export_id === null).length
@@ -77,19 +68,9 @@ export function ShipmentsView() {
       .sort((a, b) => b.cost_per_kg - a.cost_per_kg).slice(0, 8)
   }, [data])
 
-  const columns: Column[] = [
-    { key: 'exp_no', label: 'Export No' },
-    { key: 'customer', label: 'Customer' },
-    { key: 'country', label: 'Country' },
-    { key: 'pod', label: 'Port of Discharge' },
-    { key: 'shipping_line', label: 'Shipping Line' },
-    { key: 'total_logistics_cost', label: 'Cost', align: 'right', render: (row) => money(row.total_logistics_cost as number) },
-    { key: 'status', label: 'Status', render: (row) => <StatusBadge label={row.status as string} /> },
-  ]
-
   return (
     <div className="flex flex-col gap-6">
-      <FilterBar search={{ value: search, onChange: setSearch, placeholder: 'Search by export no, customer, or country…' }}>
+      <FilterBar>
         <DateRangeFilter label="ETD" from={dateFrom} to={dateTo} onFromChange={setDateFrom} onToChange={setDateTo} />
         <MultiSelectFilter label="Customer" options={shipmentCustomerList} value={customer} onChange={setCustomer} />
         <MultiSelectFilter label="Shipment Stage" options={shipmentStageList} value={stage} onChange={setStage} />
@@ -121,11 +102,6 @@ export function ShipmentsView() {
         </ChartCard>
       </div>
 
-      <Disclosure title="View data">
-        <div className="pb-4">
-          <DataTable columns={columns} rows={tableRows as unknown as Record<string, unknown>[]} statusColumn="status" height={420} />
-        </div>
-      </Disclosure>
     </div>
   )
 }

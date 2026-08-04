@@ -8,7 +8,6 @@ import { KpiCard } from '@/components/KpiCard'
 import { InsightsCard } from '@/components/InsightsCard'
 import { ChartCard } from '@/components/ChartCard'
 import { Card, CardContent } from '@/components/ui/card'
-import { DataTable, type Column } from '@/components/DataTable'
 import { StatusBadge } from '@/components/StatusBadge'
 import { CategoryBar } from '@/components/charts/CategoryBar'
 import { Donut } from '@/components/charts/Donut'
@@ -140,7 +139,6 @@ export function TransportView() {
   const [transporter, setTransporter] = useState<string[]>([])
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
-  const [search, setSearch] = useState('')
   const [tab, setTab] = useState<(typeof TABS)[number]['value']>('status')
   const [selectedIdx, setSelectedIdx] = useState(0)
 
@@ -152,11 +150,6 @@ export function TransportView() {
     () => filtered.filter((r) => dateInRange(r.execution_date, dateFrom, dateTo)),
     [filtered, dateFrom, dateTo],
   )
-  const tableRows = useMemo(() => {
-    if (!search.trim()) return data
-    const needle = search.toLowerCase()
-    return data.filter((r) => [r.customer, r.transporter, r.destination].some((v) => v.toLowerCase().includes(needle)))
-  }, [data, search])
 
   const board = useMemo(
     () =>
@@ -193,18 +186,9 @@ export function TransportView() {
       .sort((a, b) => b.actual_freight_rs - a.actual_freight_rs).slice(0, 8)
   }, [data])
 
-  const columns: Column[] = [
-    { key: 'customer', label: 'Customer' },
-    { key: 'transporter', label: 'Transporter' },
-    { key: 'province', label: 'Province' },
-    { key: 'destination', label: 'Destination' },
-    { key: 'actual_freight_rs', label: 'Freight', align: 'right', render: (row) => money(row.actual_freight_rs as number) },
-    { key: 'status', label: 'Status', render: (row) => <StatusBadge label={row.status as string} /> },
-  ]
-
   return (
     <div className="flex flex-col gap-6">
-      <FilterBar search={{ value: search, onChange: setSearch, placeholder: 'Search by customer, transporter, or destination…' }}>
+      <FilterBar>
         <DateRangeFilter label="Execution Date" from={dateFrom} to={dateTo} onFromChange={setDateFrom} onToChange={setDateTo} />
         <MultiSelectFilter label="Movement Type" options={shiftingMovementTypeList} value={movementType} onChange={setMovementType} />
         <MultiSelectFilter label="Customer" options={shiftingCustomerList} value={customer} onChange={setCustomer} />
@@ -306,11 +290,6 @@ export function TransportView() {
         </ChartCard>
       </div>
 
-      <Disclosure title="View data">
-        <div className="pb-4">
-          <DataTable columns={columns} rows={tableRows as unknown as Record<string, unknown>[]} statusColumn="status" height={420} />
-        </div>
-      </Disclosure>
     </div>
   )
 }

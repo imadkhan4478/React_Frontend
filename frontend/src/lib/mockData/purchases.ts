@@ -4,7 +4,6 @@ import {
 } from './shared'
 
 const MATERIALS = ['Steel', 'Aluminum', 'Rubber', 'Plastic', 'Composite'] as const
-const PPC_STORE = ['PPC', 'Store'] as const
 
 export interface PurchaseRow {
   ref_no: string
@@ -15,7 +14,9 @@ export interface PurchaseRow {
   branch: string
   category: string
   material: string
-  ppc_store: string
+  /** A date in the real data (when the item hit PPC/Store), not a
+   * PPC-vs-Store category. */
+  ppc_store: Date
   mop: string
   sourcing_officer: string
   quantity: number
@@ -45,7 +46,7 @@ function makeRow(i: number): PurchaseRow {
     branch: choice(rng, BRANCHES),
     category: choice(rng, ITEM_CATEGORIES),
     material: choice(rng, MATERIALS),
-    ppc_store: choice(rng, PPC_STORE),
+    ppc_store: recentDate(rng, 84),
     mop: choice(rng, MODES_OF_PURCHASE),
     sourcing_officer: choice(rng, SOURCING_OFFICERS),
     quantity: randInt(rng, 10, 500),
@@ -65,7 +66,6 @@ export interface PurchaseFilters {
   branch?: string[]
   category?: string[]
   material?: string[]
-  ppcStore?: string[]
   mop?: string[]
   sourcingOfficer?: string[]
 }
@@ -82,7 +82,6 @@ export function getPurchases(filters: PurchaseFilters = {}): PurchaseRow[] {
       matches(row.branch, filters.branch) &&
       matches(row.category, filters.category) &&
       matches(row.material, filters.material) &&
-      matches(row.ppc_store, filters.ppcStore) &&
       matches(row.mop, filters.mop) &&
       matches(row.sourcing_officer, filters.sourcingOfficer),
   )
@@ -93,6 +92,5 @@ export const purchaseSupplierList = [...SUPPLIERS]
 export const purchaseBranchList = [...BRANCHES]
 export const purchaseCategoryList = [...ITEM_CATEGORIES]
 export const purchaseMaterialList = [...MATERIALS]
-export const purchasePpcStoreList = [...PPC_STORE]
 export const purchaseMopList = [...MODES_OF_PURCHASE]
 export const purchaseSourcingOfficerList = [...SOURCING_OFFICERS]

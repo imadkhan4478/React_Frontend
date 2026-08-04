@@ -11,14 +11,27 @@ export interface Column {
 
 interface Props {
   columns: Column[]
-  rows: Record<string, unknown>[]
+  /** Optional so a caller passing data that hasn't arrived (or that an
+   * endpoint no longer returns) renders the empty state instead of throwing
+   * on `.length` — a crash here unmounts the whole app, since a single
+   * missing prop shouldn't be able to blank the page. */
+  rows?: Record<string, unknown>[]
   /** Column whose value colors the whole row, same as the old
    * ui.styled_table(status_col=...). */
   statusColumn?: string
   height?: number
+  /** Shown when there are no rows. Defaults to the "filtered everything out"
+   * wording, which is wrong when the rows were never fetched at all. */
+  emptyMessage?: string
 }
 
-export function DataTable({ columns, rows, statusColumn, height = 380 }: Props) {
+export function DataTable({
+  columns,
+  rows = [],
+  statusColumn,
+  height = 380,
+  emptyMessage = 'No rows match the current filter.',
+}: Props) {
   const { colors } = useTheme()
 
   return (
@@ -40,7 +53,7 @@ export function DataTable({ columns, rows, statusColumn, height = 380 }: Props) 
           {rows.length === 0 && (
             <tr>
               <td colSpan={columns.length} className="px-3 py-6 text-center text-muted">
-                No rows match the current filter.
+                {emptyMessage}
               </td>
             </tr>
           )}

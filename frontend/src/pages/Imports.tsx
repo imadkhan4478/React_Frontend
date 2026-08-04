@@ -19,9 +19,8 @@ import type { ValueRow } from '@/lib/api/importsDashboard'
 // lib/mockData/imports.ts — that mock module still exists and still backs
 // Reports' "Imports" data type there, it's just not used on this page
 // anymore. The backend's filters only take one value each (plain query
-// params, not arrays), and it doesn't expose a row-level list yet, so this
-// page is KPIs/charts, not a filterable table — the row-level "View data"
-// section comes back once that endpoint exists.
+// params, not arrays), so its filters are single-select. Like the other live
+// dashboards, this page is KPIs and charts only.
 function toMillions(rows: ValueRow[]): ValueRow[] {
   return rows.map((r) => ({ ...r, value: Number((r.value / 1_000_000).toFixed(2)) }))
 }

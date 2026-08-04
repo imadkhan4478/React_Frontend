@@ -5,13 +5,11 @@ import { SegmentedControl } from '@/components/SegmentedControl'
 import { ShipmentsView } from './logistics/ShipmentsView'
 import { PackingView } from './logistics/PackingView'
 import { TransportView } from './logistics/TransportView'
-import { DocumentationView } from './logistics/DocumentationView'
 
 const VIEWS = [
   { value: 'shipments', label: 'Export Shipments' },
   { value: 'packing', label: 'Packing' },
   { value: 'transport', label: 'Transport' },
-  { value: 'documentation', label: 'Export Documentation' },
 ] as const
 
 export function Logistics() {
@@ -35,9 +33,9 @@ export function Logistics() {
               Logistics
             </span>
             <h1 className="font-display text-2xl font-extrabold leading-tight tracking-tight text-navy lg:text-3xl">
-              Export shipments &amp; documentation
+              Export shipments &amp; transport
             </h1>
-            <p className="mt-1 max-w-md text-sm text-muted">Shipments, packing, transport, and export documentation in one place.</p>
+            <p className="mt-1 max-w-md text-sm text-muted">Shipments, packing, and transport in one place.</p>
           </div>
           <SegmentedControl options={VIEWS} value={view} onChange={setView} variant="solid" />
         </div>
@@ -47,7 +45,6 @@ export function Logistics() {
         {view === 'shipments' && <ShipmentsView />}
         {view === 'packing' && <PackingView />}
         {view === 'transport' && <TransportView />}
-        {view === 'documentation' && <DocumentationView />}
       </div>
     </div>
   )

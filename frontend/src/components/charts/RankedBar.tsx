@@ -14,6 +14,16 @@ interface Props {
   invertColor?: boolean
 }
 
+// The category axis used to be a flat 130px, which was fine for mock labels
+// ("Alpha Traders") but silently cut real ones in half — live supplier names
+// run to 50 characters and stock item names to 106. The axis now grows with
+// the longest label it actually has to draw, and anything still too long is
+// ellipsed rather than clipped mid-glyph. Short-label charts stay at exactly
+// the old 130px, so nothing that already looked right moves.
+const MIN_AXIS_WIDTH = 130
+const MAX_AXIS_WIDTH = 240
+const CHAR_PX = 6.2
+
 /** Horizontal ranked bar — supplier performance, top items, etc. */
 export function RankedBar({ data, category, value, height = 320, benchmark, invertColor = false }: Props) {
   const { colors } = useTheme()
@@ -21,6 +31,16 @@ export function RankedBar({ data, category, value, height = 320, benchmark, inve
   const values = sorted.map((d) => d[value] as number)
   const max = Math.max(...values)
   const min = Math.min(...values)
+
+  const longestLabel = sorted.reduce((n, d) => Math.max(n, String(d[category] ?? '').length), 0)
+  const axisWidth = Math.min(MAX_AXIS_WIDTH, Math.max(MIN_AXIS_WIDTH, Math.ceil(longestLabel * CHAR_PX)))
+  const maxChars = Math.floor(axisWidth / CHAR_PX)
+  // Only the tick is shortened — the tooltip still gets the raw value, so the
+  // full name is always one hover away.
+  const formatTick = (tick: unknown) => {
+    const label = String(tick ?? '')
+    return label.length > maxChars ? `${label.slice(0, maxChars - 1)}…` : label
+  }
 
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -30,7 +50,8 @@ export function RankedBar({ data, category, value, height = 320, benchmark, inve
         <YAxis
           type="category"
           dataKey={category}
-          width={130}
+          width={axisWidth}
+          tickFormatter={formatTick}
           tick={{ fill: colors.ink, fontSize: 12 }}
           axisLine={false}
           tickLine={false}

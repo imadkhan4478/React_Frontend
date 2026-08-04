@@ -6,8 +6,6 @@ import { Disclosure } from '@/components/Disclosure'
 import { KpiCard } from '@/components/KpiCard'
 import { InsightsCard } from '@/components/InsightsCard'
 import { ChartCard } from '@/components/ChartCard'
-import { DataTable, type Column } from '@/components/DataTable'
-import { StatusBadge } from '@/components/StatusBadge'
 import { CategoryBar } from '@/components/charts/CategoryBar'
 import { Donut } from '@/components/charts/Donut'
 import { RankedBar } from '@/components/charts/RankedBar'
@@ -30,7 +28,6 @@ export function PackingView() {
   const [customer, setCustomer] = useState<string[]>([])
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
-  const [search, setSearch] = useState('')
   const [tab, setTab] = useState<(typeof TABS)[number]['value']>('status')
 
   const filtered = useMemo(
@@ -41,11 +38,6 @@ export function PackingView() {
     () => filtered.filter((r) => dateInRange(r.packing_date, dateFrom, dateTo)),
     [filtered, dateFrom, dateTo],
   )
-  const tableRows = useMemo(() => {
-    if (!search.trim()) return data
-    const needle = search.toLowerCase()
-    return data.filter((r) => [r.customer, r.jobs_no, r.product_category].some((v) => v.toLowerCase().includes(needle)))
-  }, [data, search])
 
   const pending = data.filter((r) => r.status === 'Pending Packing').length
   const inProgress = data.filter((r) => r.status === 'In Progress').length
@@ -71,19 +63,9 @@ export function PackingView() {
     return [...map.entries()].map(([customer, jobs]) => ({ customer, jobs })).sort((a, b) => b.jobs - a.jobs).slice(0, 8)
   }, [data])
 
-  const columns: Column[] = [
-    { key: 'jobs_no', label: 'Job No' },
-    { key: 'customer', label: 'Customer' },
-    { key: 'works', label: 'Works' },
-    { key: 'product_category', label: 'Category' },
-    { key: 'business_type', label: 'Business Type' },
-    { key: 'actual_packing_cost', label: 'Cost', align: 'right', render: (row) => money(row.actual_packing_cost as number) },
-    { key: 'status', label: 'Status', render: (row) => <StatusBadge label={row.status as string} /> },
-  ]
-
   return (
     <div className="flex flex-col gap-6">
-      <FilterBar search={{ value: search, onChange: setSearch, placeholder: 'Search by customer, job no, or product category…' }}>
+      <FilterBar>
         <DateRangeFilter label="Packing Date" from={dateFrom} to={dateTo} onFromChange={setDateFrom} onToChange={setDateTo} />
         <MultiSelectFilter label="Customer" options={packingCustomerList} value={customer} onChange={setCustomer} />
         <MultiSelectFilter label="Works" options={packingWorksList} value={works} onChange={setWorks} />
@@ -123,11 +105,6 @@ export function PackingView() {
         </ChartCard>
       </div>
 
-      <Disclosure title="View data">
-        <div className="pb-4">
-          <DataTable columns={columns} rows={tableRows as unknown as Record<string, unknown>[]} statusColumn="status" height={420} />
-        </div>
-      </Disclosure>
     </div>
   )
 }
