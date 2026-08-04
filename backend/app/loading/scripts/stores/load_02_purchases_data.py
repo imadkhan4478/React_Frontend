@@ -6,7 +6,11 @@ from app.loading.scripts.etl_common import (
     read_sheet, clean_text, clean_int, clean_date, bulk_insert
 )
 from pathlib import Path
-directory = Path(r"D:\React_app\backend\app\loading\data\purchases")
+
+CURRENT_DIR = Path(__file__).resolve().parents[2]
+directory = CURRENT_DIR / "data" / "purchases"
+
+# directory = Path(r"C:\Users\hp\Desktop\internship\erp-fastapi\app\loading\data\purchases")
 
 files = list(directory.iterdir())
 
@@ -35,9 +39,9 @@ def load_purchases(conn):
             clean_text(row.get("Bill No")),
             clean_text(row.get("Sourcing O")),
             clean_text(row.get("Item Code")),
-            clean_text(row.get("Supplier")),
             clean_text(row.get("Item Name")),
             clean_text(row.get("Specificati")),
+            clean_text(row.get("Supplier")),
             clean_text(row.get("PO Numbe")),
         ))
 

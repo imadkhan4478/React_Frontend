@@ -67,12 +67,7 @@ def fetch_filtered_consigments(
         query = query.where(
             Consignment.origin == country
         )
-
-    # requisition_date is never populated by the current loader — every row
-    # is NULL, so filtering on it always returned zero rows regardless of
-    # the dates picked. eta_works is the same real, well-populated date the
-    # monthly trend groups by (see calculations.py), so filtering by it here
-    # actually narrows the same field the chart is showing.
+        
     if from_date:
         query = query.where(Consignment.eta_works >= from_date)
     if to_date:
