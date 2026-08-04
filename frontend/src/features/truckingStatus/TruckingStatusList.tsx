@@ -10,6 +10,7 @@ import { useAuth } from '@/features/auth/AuthContext'
 import { can } from '@/lib/roleAccess'
 import { MOVEMENT_TYPES, TRUCKING_SOURCES, vehicleCount } from './schema'
 import { exportListExcel, exportListPdf, type ListColumn } from '@/lib/listExport'
+import { usePagination, Pagination, useSort, SortHeader } from '@/components/Pagination'
 import {
   getTruckingJobs,
   rollupLabel,
@@ -72,14 +73,22 @@ export function TruckingStatusList() {
     [all, executionFrom, executionTo],
   )
 
-  const jobs = useMemo(
+  const jobsRaw = useMemo(
     () =>
-      all
-        .filter((r) => !(r.open && r.source !== 'manual') && inDateRange(r))
-        .sort((a, b) => a.systemId.localeCompare(b.systemId)),
+      all.filter((r) => !(r.open && r.source !== 'manual') && inDateRange(r)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [all, executionFrom, executionTo],
   )
+  const { sorted: jobs, sort, toggle } = useSort(jobsRaw, {
+    systemId: (r) => r.systemId,
+    source: (r) => sourceLabel(r.source),
+    movement: (r) => r.movementType,
+    transporter: (r) => r.transporterName ?? '',
+    vehicles: (r) => vehicleCount(r.vehicles),
+    payment: (r) => r.paymentStatus ?? '',
+    execution: (r) => r.executionDate ?? '',
+  })
+  const { page, pageCount, pageRows: jobPage, setPage, total, pageSize } = usePagination(jobs, 10)
 
   // Export requests are always-live with no accept step (takeAction only
   // converts Logistics / Import-FOB sources), so this both narrows the type
@@ -176,6 +185,7 @@ export function TruckingStatusList() {
                   <th className="px-3 py-2">Request ID</th>
                   <th className="px-3 py-2">Source</th>
                   <th className="px-3 py-2">Movement</th>
+                  <th className="px-3 py-2">Transporter</th>
                   <th className="px-3 py-2">Route</th>
                   <th className="px-3 py-2">Reference</th>
                   <th className="px-3 py-2">Execution</th>
@@ -192,6 +202,7 @@ export function TruckingStatusList() {
                     <td className="px-3 py-2 font-medium text-ink">{r.systemId}</td>
                     <td className="px-3 py-2"><SourceTag row={r} /></td>
                     <td className="px-3 py-2">{r.movementType}</td>
+                    <td className="px-3 py-2">{r.transporterName ?? '—'}</td>
                     <td className="px-3 py-2 text-muted">{(r.pickup ?? '—')} → {(r.destination ?? '—')}</td>
                     <td className="px-3 py-2 tabular-nums">{r.referenceNo ?? '—'}</td>
                     <td className="px-3 py-2 tabular-nums">{r.executionDate ?? '—'}</td>
@@ -232,21 +243,21 @@ export function TruckingStatusList() {
           <table className="w-full min-w-[1000px] text-left text-sm">
             <thead className="bg-canvas-alt text-xs uppercase text-muted">
               <tr>
-                <th className="px-3 py-2">ID</th>
-                <th className="px-3 py-2">Source</th>
-                <th className="px-3 py-2">Movement</th>
-                <th className="px-3 py-2">Transporter</th>
+                <SortHeader label="ID" sortKey="systemId" sort={sort} onToggle={toggle} />
+                <SortHeader label="Source" sortKey="source" sort={sort} onToggle={toggle} />
+                <SortHeader label="Movement" sortKey="movement" sort={sort} onToggle={toggle} />
+                <SortHeader label="Transporter" sortKey="transporter" sort={sort} onToggle={toggle} />
                 <th className="px-3 py-2">Route</th>
-                <th className="px-3 py-2">Vehicles</th>
+                <SortHeader label="Vehicles" sortKey="vehicles" sort={sort} onToggle={toggle} />
                 <th className="px-3 py-2">Tracking</th>
-                <th className="px-3 py-2">Payment</th>
-                <th className="px-3 py-2">Execution</th>
+                <SortHeader label="Payment" sortKey="payment" sort={sort} onToggle={toggle} />
+                <SortHeader label="Execution" sortKey="execution" sort={sort} onToggle={toggle} />
                 <th className="px-3 py-2 text-right">Delay</th>
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
             <tbody>
-              {jobs.map((r) => (
+              {jobPage.map((r) => (
                 <tr
                   key={r.systemId}
                   className="cursor-pointer border-t border-line hover:bg-canvas-alt"
@@ -294,6 +305,7 @@ export function TruckingStatusList() {
             </tbody>
           </table>
         </div>
+        <Pagination page={page} pageCount={pageCount} total={total} pageSize={pageSize} onPage={setPage} />
       </section>
     </div>
   )

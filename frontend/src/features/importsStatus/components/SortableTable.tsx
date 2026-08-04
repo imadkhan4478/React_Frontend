@@ -31,12 +31,15 @@ interface Props<T> {
   initialSort?: { key: string; dir: 'asc' | 'desc' }
   empty?: ReactNode
   maxHeight?: number
+  /** Rows per page. Omit or 0 to disable pagination (show all). */
+  pageSize?: number
 }
 
 export function SortableTable<T>({
-  columns, rows, flagged, onRowClick, initialSort, empty, maxHeight = 560,
+  columns, rows, flagged, onRowClick, initialSort, empty, maxHeight = 560, pageSize = 10,
 }: Props<T>) {
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(initialSort ?? null)
+  const [page, setPage] = useState(1)
 
   const sorted = (() => {
     if (!sort) return rows
@@ -49,6 +52,13 @@ export function SortableTable<T>({
       return av < bv ? -dir : av > bv ? dir : 0
     })
   })()
+
+  // Pagination (pageSize = 0 disables). Page clamps when the row set shrinks.
+  const paginate = pageSize > 0
+  const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize))
+  const safePage = paginate ? Math.min(page, pageCount) : 1
+  if (paginate && safePage !== page) setPage(safePage)
+  const visible = paginate ? sorted.slice((safePage - 1) * pageSize, safePage * pageSize) : sorted
 
   const toggle = (key: string) => {
     const col = columns.find((c) => c.key === key)
@@ -89,14 +99,14 @@ export function SortableTable<T>({
           </tr>
         </thead>
         <tbody>
-          {sorted.length === 0 && (
+          {visible.length === 0 && (
             <tr>
               <td colSpan={columns.length} className="px-3 py-10 text-center text-muted">
                 {empty ?? 'No rows match the current filter.'}
               </td>
             </tr>
           )}
-          {sorted.map((row, i) => (
+          {visible.map((row, i) => (
             <tr
               key={i}
               onClick={onRowClick ? () => onRowClick(row) : undefined}
@@ -118,6 +128,20 @@ export function SortableTable<T>({
           ))}
         </tbody>
       </table>
+      {paginate && sorted.length > pageSize && (
+        <div className="flex items-center justify-between gap-3 border-t border-line px-3 py-2 text-sm text-muted">
+          <span className="tabular-nums">
+            {(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, sorted.length)} of {sorted.length}
+          </span>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setPage(safePage - 1)} disabled={safePage <= 1}
+              className="rounded border border-line px-2.5 py-1 text-xs hover:border-muted disabled:opacity-40">Prev</button>
+            <span className="px-2 text-xs tabular-nums">Page {safePage} of {pageCount}</span>
+            <button onClick={() => setPage(safePage + 1)} disabled={safePage >= pageCount}
+              className="rounded border border-line px-2.5 py-1 text-xs hover:border-muted disabled:opacity-40">Next</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

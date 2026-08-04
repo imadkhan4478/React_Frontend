@@ -167,6 +167,28 @@ export function Step1Consignment() {
                     </Field>
                   </div>
 
+                  <p className="mb-2.5 mt-4 text-[10.5px] font-semibold uppercase tracking-wide text-muted">
+                    Weight &amp; dimensions
+                    <span className="ml-1.5 font-normal normal-case text-muted">— fill before handing an FOB consignment to trucking</span>
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                    <Field label="Net weight (kg)">
+                      <Input type="number" min="0" step="any" {...register(`items.${i}.netWeight`)} placeholder="Optional" />
+                    </Field>
+                    <Field label="Gross weight (kg)">
+                      <Input type="number" min="0" step="any" {...register(`items.${i}.grossWeight`)} placeholder="Optional" />
+                    </Field>
+                    <Field label="Length (cm)">
+                      <Input type="number" min="0" step="any" {...register(`items.${i}.length`)} placeholder="Optional" />
+                    </Field>
+                    <Field label="Width (cm)">
+                      <Input type="number" min="0" step="any" {...register(`items.${i}.width`)} placeholder="Optional" />
+                    </Field>
+                    <Field label="Height (cm)">
+                      <Input type="number" min="0" step="any" {...register(`items.${i}.height`)} placeholder="Optional" />
+                    </Field>
+                  </div>
+
                   <p className="mb-2.5 mt-4 text-[10.5px] font-semibold uppercase tracking-wide text-muted">Requisition</p>
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <Field label="Requisition type" required error={errors.items?.[i]?.requisitionType?.message}>

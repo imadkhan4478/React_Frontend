@@ -435,7 +435,7 @@ export function takeAction(sourceType: 'from-logistics' | 'from-import-fob', sou
         label: it.itemName || 'Item',
         itemDetails: it.itemName,
         quantity: it.quantity,
-        weight: undefined,
+        weight: it.grossWeight ?? undefined,
       }))
       const first = consignment.items[0]
       const more = consignment.items.length - 1
@@ -529,13 +529,20 @@ export function sourceLabel(source: TruckingSource): string {
  * so the Vehicles step needs the full candidate list, not just the one
  * consignment (if any) this specific job was taken from.
  */
-export function getImportConsignmentOptions(): { systemId: string; label: string }[] {
+export function getImportConsignmentOptions(): { systemId: string; label: string; grossWeight: number | null; netWeight: number | null }[] {
   try {
     const rows = importsData.getConsignments() ?? []
-    return rows.map((r) => ({
-      systemId: r.systemId,
-      label: `${r.systemId} — ${r.items[0]?.itemName ?? r.requisitionSummary}`,
-    }))
+    return rows.map((r) => {
+      const gross = importsData.consignmentGrossWeight(r)
+      const net = importsData.consignmentNetWeight(r)
+      const wt = gross != null ? ` · ${gross.toLocaleString()} kg` : ' · weight pending'
+      return {
+        systemId: r.systemId,
+        label: `${r.systemId} — ${r.items[0]?.itemName ?? r.requisitionSummary}${wt}`,
+        grossWeight: gross,
+        netWeight: net,
+      }
+    })
   } catch {
     return []
   }

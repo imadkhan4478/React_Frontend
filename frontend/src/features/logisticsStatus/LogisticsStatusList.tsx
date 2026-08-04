@@ -14,6 +14,7 @@ import {
   arrivalDelayDays,
 } from '@/features/logisticsStatus/schema'
 import { exportListExcel, exportListPdf, type ListColumn } from '@/lib/listExport'
+import { usePagination, Pagination, useSort, SortHeader } from '@/components/Pagination'
 import {
   getLogisticsOrders, deriveImportFobRequests,
   customerList, orderTypeList, statusList,
@@ -83,7 +84,20 @@ export function LogisticsStatusList() {
   const { user } = useAuth()
   const [filters, setFilters] = useState<LogisticsFilters>({})
 
-  const rows = useMemo(() => getLogisticsOrders(filters), [filters])
+  const rowsRaw = useMemo(() => getLogisticsOrders(filters), [filters])
+  const { sorted: rows, sort, toggle } = useSort(rowsRaw, {
+    systemId: (o) => o.systemId,
+    orderType: (o) => orderTypeLabel(o.department, o.orderType),
+    customer: (o) => o.customerName,
+    batch: (o) => o.batchNo,
+    packages: (o) => o.packages.length,
+    net: (o) => totalNetWeight(o.items),
+    gross: (o) => totalPackageGrossWeight(o.packages),
+    incoterm: (o) => o.incoterm ?? '',
+    status: (o) => o.status,
+    delay: (o) => arrivalDelayDays(o) ?? -99999,
+  })
+  const { page, pageCount, pageRows, setPage, total, pageSize } = usePagination(rows, 10)
   const fobRequests = useMemo(() => deriveImportFobRequests(), [])
   const canEdit = can(user, 'editAny')
 
@@ -176,25 +190,25 @@ export function LogisticsStatusList() {
           <table className="w-full min-w-[1000px] text-sm">
             <thead className="bg-canvas-alt text-xs text-muted">
               <tr>
-                <th className="px-3 py-2 text-left">MO #</th>
-                <th className="px-3 py-2 text-left">Order Type</th>
+                <SortHeader label="MO #" sortKey="systemId" sort={sort} onToggle={toggle} />
+                <SortHeader label="Order Type" sortKey="orderType" sort={sort} onToggle={toggle} />
                 <th className="px-3 py-2 text-left">Job #</th>
-                <th className="px-3 py-2 text-left">Customer</th>
-                <th className="px-3 py-2 text-left">Batch #</th>
+                <SortHeader label="Customer" sortKey="customer" sort={sort} onToggle={toggle} />
+                <SortHeader label="Batch #" sortKey="batch" sort={sort} onToggle={toggle} />
                 <th className="px-3 py-2 text-left">Items</th>
-                <th className="px-3 py-2 text-left">Packages</th>
-                <th className="px-3 py-2 text-right">Net Wt (kg)</th>
-                <th className="px-3 py-2 text-right">Gross Wt (kg)</th>
+                <SortHeader label="Packages" sortKey="packages" sort={sort} onToggle={toggle} />
+                <SortHeader label="Net Wt (kg)" sortKey="net" sort={sort} onToggle={toggle} align="right" />
+                <SortHeader label="Gross Wt (kg)" sortKey="gross" sort={sort} onToggle={toggle} align="right" />
                 <th className="px-3 py-2 text-left">Works</th>
-                <th className="px-3 py-2 text-left">Incoterm</th>
-                <th className="px-3 py-2 text-left">Status</th>
-                <th className="px-3 py-2 text-right">Arrival delay</th>
+                <SortHeader label="Incoterm" sortKey="incoterm" sort={sort} onToggle={toggle} />
+                <SortHeader label="Status" sortKey="status" sort={sort} onToggle={toggle} />
+                <SortHeader label="Arrival delay" sortKey="delay" sort={sort} onToggle={toggle} align="right" />
                 <th className="px-3 py-2 text-left">Sent to Trucking</th>
                 <th className="px-3 py-2 text-left"></th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((o) => {
+              {pageRows.map((o) => {
                 const jobNos = jobNumbers(o.items)
                 const itemsSummary = o.items.map((it) => `${it.itemDetail}${it.quantity !== undefined ? ` ×${it.quantity}` : ''}`)
                 const inMoGroup = !!o.moNo && (moCounts.get(o.moNo) ?? 0) > 1
@@ -269,6 +283,7 @@ export function LogisticsStatusList() {
           </table>
         </div>
       )}
+      <Pagination page={page} pageCount={pageCount} total={total} pageSize={pageSize} onPage={setPage} />
 
       {/* Open Requests — Import FOB (read-only; the record lives in Imports) */}
       {fobRequests.length > 0 && (
