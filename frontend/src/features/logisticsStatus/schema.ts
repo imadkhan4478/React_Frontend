@@ -421,6 +421,20 @@ export function orderTypeLabel(department: Department, orderType: OrderType): st
 export const jobNumbers = (items: LogisticsItem[]) =>
   items.map((it) => it.jobNo).filter((j) => !!j)
 
+/** Latest planned RFD across an order's items (max date). Null if none set. */
+export const latestPlannedRfd = (items: LogisticsItem[]): string | null => {
+  const ds = items.map((it) => it.plannedRfdDate).filter((d): d is string => !!d)
+  return ds.length ? ds.reduce((a, b) => (a > b ? a : b)) : null
+}
+
+/** Latest ACTUAL RFD across an order's items — the real ready-for-dispatch
+ *  date, as distinct from the planned one. Null until at least one item has
+ *  actually been readied. */
+export const latestActualRfd = (items: LogisticsItem[]): string | null => {
+  const ds = items.map((it) => it.actualRfdDate).filter((d): d is string => !!d)
+  return ds.length ? ds.reduce((a, b) => (a > b ? a : b)) : null
+}
+
 export function itemPendingFields(item: LogisticsItem): string[] {
   const out: string[] = []
   if (!item.itemDetail) out.push('Item detail')

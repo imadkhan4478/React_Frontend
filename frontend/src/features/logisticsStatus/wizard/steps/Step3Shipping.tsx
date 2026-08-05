@@ -1,7 +1,11 @@
 import { useFormContext, useFieldArray, useWatch } from 'react-hook-form'
+import { useParams } from 'react-router-dom'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { daysBetween, emptyContainer, type LogisticsDraft } from '../../schema'
+import { isContainerNumberTaken } from '@/lib/logisticsStatusData'
+
+const normContainer = (s: string) => s.replace(/\s+/g, '').toUpperCase()
 
 const CONTAINER_TYPES = ["20' Dry", "40' Dry", "40' High Cube", "20' Reefer", "40' Reefer", "20' Open Top", "Flat Rack"]
 const selectClass =
@@ -22,13 +26,30 @@ function DerivedField({ label, value, derivation }: { label: string; value: stri
 
 export function Step3Shipping() {
   const { register, control, formState: { errors } } = useFormContext<LogisticsDraft>()
+  const { id } = useParams()
   const { fields: containerFields, append: appendContainer, remove: removeContainer } = useFieldArray({ control, name: 'containers' })
-  const [cro, actualArrival, orderType] = useWatch({
+  const [cro, actualArrival, orderType, watchedContainers] = useWatch({
     control,
-    name: ['croArrivalDate', 'actualArrivalDate', 'orderType'],
+    name: ['croArrivalDate', 'actualArrivalDate', 'orderType', 'containers'],
   })
 
   const arrivalDelay = daysBetween(cro, actualArrival)
+
+  // Live duplicate check: a container number can't repeat across orders, nor
+  // twice within THIS order. Returns a reason string when taken, else null.
+  const duplicateReason = (value: string | undefined, index: number): string | null => {
+    const v = (value ?? '').trim()
+    if (!v) return null
+    const norm = normContainer(v)
+    // within this order (another row with the same number)
+    const localDup = (watchedContainers ?? []).some(
+      (c, i) => i !== index && c?.containerNo && normContainer(c.containerNo) === norm,
+    )
+    if (localDup) return 'Already entered on another container in this order'
+    // across all other orders
+    if (isContainerNumberTaken(v, id)) return 'This container number is already used by another order'
+    return null
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -53,8 +74,25 @@ export function Step3Shipping() {
                 </select>
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor={`containers.${i}.containerNo`}>Container No. <span className="font-normal text-muted">(optional)</span></Label>
-                <Input id={`containers.${i}.containerNo`} placeholder="e.g. MSKU1234567" {...register(`containers.${i}.containerNo`)} />
+                <Label htmlFor={`containers.${i}.containerNo`}>Container No. <span className="font-normal text-muted">(unique)</span></Label>
+                <Input
+                  id={`containers.${i}.containerNo`}
+                  placeholder="e.g. MSKU1234567"
+                  aria-invalid={!!duplicateReason(watchedContainers?.[i]?.containerNo, i)}
+                  className={duplicateReason(watchedContainers?.[i]?.containerNo, i) ? 'border-risk focus-visible:ring-risk/40' : ''}
+                  {...register(`containers.${i}.containerNo`, {
+                    validate: (value) =>
+                      duplicateReason(value as string | undefined, i) ?? true,
+                  })}
+                />
+                {(() => {
+                  const reason = duplicateReason(watchedContainers?.[i]?.containerNo, i)
+                  return reason
+                    ? <p className="text-xs text-risk">{reason}</p>
+                    : errors.containers?.[i]?.containerNo
+                      ? <p className="text-xs text-risk">{String(errors.containers[i]?.containerNo?.message)}</p>
+                      : null
+                })()}
               </div>
               <button
                 type="button"

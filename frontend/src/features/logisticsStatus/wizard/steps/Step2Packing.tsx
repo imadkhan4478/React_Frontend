@@ -61,7 +61,12 @@ function AllocationRow({
   return (
     <tr className="border-t border-line">
       <td className="py-1.5 pr-3">
-        {item.itemDetail || <span className="italic text-muted">Not named</span>}
+        <span className="inline-flex items-center gap-1.5">
+          {item.jobNo
+            ? <span className="rounded bg-canvas-alt px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-muted" title="Job number">{item.jobNo}</span>
+            : <span className="rounded bg-canvas-alt px-1.5 py-0.5 text-[11px] text-muted" title="No job number yet">No job #</span>}
+          <span>{item.itemDetail || <span className="italic text-muted">Not named</span>}</span>
+        </span>
         {sourceBatchLabel && <span className="ml-1.5 text-[11px] text-muted">({sourceBatchLabel})</span>}
       </td>
       <td className="py-1.5 pr-3 text-muted">{qty ?? '—'}</td>

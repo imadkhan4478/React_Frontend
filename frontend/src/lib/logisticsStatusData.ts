@@ -332,6 +332,25 @@ export function getLogisticsOrders(f: LogisticsFilters = {}): LogisticsOrder[] {
   })
 }
 
+export function usedContainerNumbers(excludeSystemId?: string): Set<string> {
+  const norm = (s: string) => s.replace(/\s+/g, '').toUpperCase()
+  const set = new Set<string>()
+  for (const o of ALL) {
+    if (excludeSystemId && o.systemId === excludeSystemId) continue
+    for (const c of o.containers ?? []) {
+      if (c.containerNo?.trim()) set.add(norm(c.containerNo))
+    }
+  }
+  return set
+}
+
+/** True if `containerNo` is already used by another order. Case/space-insensitive. */
+export function isContainerNumberTaken(containerNo: string, excludeSystemId?: string): boolean {
+  const norm = containerNo.replace(/\s+/g, '').toUpperCase()
+  if (!norm) return false
+  return usedContainerNumbers(excludeSystemId).has(norm)
+}
+
 export const getLogisticsOrder = (systemId: string): LogisticsOrder | undefined =>
   ALL.find((o) => o.systemId === systemId)
 
@@ -566,6 +585,99 @@ export function deriveImportFobRequests(): LogisticsFobRequest[] {
   } catch {
     return []
   }
+}
+
+/**
+ * ---------------------------------------------------------------------------
+ * Logistics Service Jobs
+ * ---------------------------------------------------------------------------
+ * Logistics performs shipping/clearing service work that isn't one of its own
+ * export/local orders. Two kinds live together under "Service Jobs":
+ *
+ *   - Import FOB  — handed over from Imports (item details were entered THERE
+ *                   first). These stay derived + read-only via
+ *                   deriveImportFobRequests(); the record's home is Imports.
+ *   - Customer Rework — a customer sends in old rolls / used goods for rework.
+ *                   Imports is NOT involved, so Logistics enters every detail
+ *                   itself. These are real, owned, editable records kept in the
+ *                   in-memory store below (mirrors the ALL/DRAFTS pattern used
+ *                   for orders and MANUAL_JOBS in trucking).
+ *
+ * Both are surfaced in the Service Jobs tab of the Logistics list.
+ */
+export type ServiceJobType = 'import-fob' | 'customer-rework'
+
+export interface ServiceJob {
+  systemId: string
+  jobType: ServiceJobType
+  customerName: string
+  itemDetails: string       // logistics-entered for rework; summary for FOB
+  quantity?: number
+  origin: string
+  status: string
+  receivedDate?: string     // when the customer's goods arrived at logistics
+  targetDate?: string       // when the rework/shipping should be done
+  clearingAgent?: string
+  remarks?: string
+  /** For import-fob rows only: the source consignment in Imports. */
+  sourceRef?: string
+}
+
+const REWORK_STATUSES = ['Received', 'Under Rework', 'Ready', 'Dispatched'] as const
+export const reworkStatusList = [...REWORK_STATUSES]
+
+// Seeded so the tab isn't empty in the demo.
+const REWORK_JOBS: ServiceJob[] = [
+  {
+    systemId: 'SVC-2026-0001', jobType: 'customer-rework',
+    customerName: 'Packages Ltd', itemDetails: 'Used kraft paper rolls — re-slitting',
+    quantity: 24, origin: 'Lahore', status: 'Under Rework',
+    receivedDate: '2026-05-02', targetDate: '2026-05-20', remarks: 'Customer-owned stock',
+  },
+  {
+    systemId: 'SVC-2026-0002', jobType: 'customer-rework',
+    customerName: 'Century Paper', itemDetails: 'Old film rolls — re-winding + inspection',
+    quantity: 12, origin: 'Kasur', status: 'Received', receivedDate: '2026-05-11',
+  },
+]
+
+let reworkSeq = 3
+
+/** Derived FOB requests + owned rework jobs, unified as ServiceJob rows. */
+export function getServiceJobs(jobType?: ServiceJobType): ServiceJob[] {
+  const fob: ServiceJob[] = deriveImportFobRequests().map((r) => ({
+    systemId: r.systemId,
+    jobType: 'import-fob' as const,
+    customerName: r.customerName,
+    itemDetails: r.itemSummary,
+    origin: r.origin,
+    status: r.status,
+    clearingAgent: r.needsClearingAgent ? undefined : 'Assigned',
+    sourceRef: r.sourceRef,
+  }))
+  const all = [...fob, ...REWORK_JOBS]
+  return jobType ? all.filter((j) => j.jobType === jobType) : all
+}
+
+export function getServiceJob(systemId: string): ServiceJob | undefined {
+  return getServiceJobs().find((j) => j.systemId === systemId)
+}
+
+/** Create a customer-rework job (logistics enters everything itself). */
+export function createReworkJob(input: Omit<ServiceJob, 'systemId' | 'jobType'>): ServiceJob {
+  const job: ServiceJob = {
+    ...input,
+    systemId: `SVC-2026-${String(reworkSeq++).padStart(4, '0')}`,
+    jobType: 'customer-rework',
+  }
+  REWORK_JOBS.unshift(job)
+  return job
+}
+
+/** Update an existing customer-rework job in place. */
+export function updateReworkJob(systemId: string, patch: Partial<ServiceJob>): void {
+  const job = REWORK_JOBS.find((j) => j.systemId === systemId)
+  if (job) Object.assign(job, patch)
 }
 
 export const customerList = [...CUSTOMERS]
