@@ -88,6 +88,7 @@ export function Imports() {
             trendX="month"
             trendY="value"
             caption="PKR millions per month, current filter"
+            trendUnit="PKR (millions)"
           />
 
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -105,7 +106,7 @@ export function Imports() {
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <ChartCard title="Value by Country (PKR millions)" className="lg:col-span-2">
               {data.consignments.value_by_country.length > 0 ? (
-                <RankedBar data={toMillions(data.consignments.value_by_country)} category="label" value="value" height={280} />
+                <RankedBar data={toMillions(data.consignments.value_by_country)} category="label" value="value" height={280} unit="PKR (millions)" />
               ) : (
                 <p className="py-12 text-center text-sm text-muted">No country data in the current view.</p>
               )}
@@ -127,7 +128,7 @@ export function Imports() {
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <ChartCard title="Value by Supplier (PKR millions)">
               {data.consignments.value_by_supplier.length > 0 ? (
-                <RankedBar data={toMillions(data.consignments.value_by_supplier)} category="label" value="value" height={300} />
+                <RankedBar data={toMillions(data.consignments.value_by_supplier)} category="label" value="value" height={300} unit="PKR (millions)" />
               ) : (
                 <p className="py-12 text-center text-sm text-muted">No supplier data in the current view.</p>
               )}
@@ -135,7 +136,7 @@ export function Imports() {
 
             <ChartCard title="Value by Branch (PKR millions)">
               {data.consignments.value_by_branch.length > 0 ? (
-                <RankedBar data={toMillions(data.consignments.value_by_branch)} category="label" value="value" height={300} />
+                <RankedBar data={toMillions(data.consignments.value_by_branch)} category="label" value="value" height={300} unit="PKR (millions)" />
               ) : (
                 <p className="py-12 text-center text-sm text-muted">No branch data in the current view.</p>
               )}

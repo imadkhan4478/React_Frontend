@@ -61,6 +61,11 @@ export interface MonthlyValuePoint {
   value: number
 }
 
+export interface OverdueBucket {
+  bucket: string
+  orders: number
+}
+
 export interface PurchasesDashboardFilters {
   status?: string[]
   supplier?: string[]
@@ -84,6 +89,7 @@ interface RawResponse {
     status_split: LabelValue[]
     value_by_supplier: LabelValue[]
     value_by_branch: LabelValue[]
+    overdue_buckets: OverdueBucket[]
     monthly_value_trend: MonthlyValuePoint[]
     statuses: string[]
     suppliers: string[]
@@ -100,6 +106,7 @@ export interface PurchasesDashboardResponse {
   statusSplit: LabelValue[]
   valueBySupplier: LabelValue[]
   valueByBranch: LabelValue[]
+  overdueBuckets: OverdueBucket[]
   monthlyValueTrend: MonthlyValuePoint[]
   statuses: string[]
   suppliers: string[]
@@ -126,6 +133,7 @@ export async function getPurchasesDashboard(filters: PurchasesDashboardFilters =
     statusSplit: data.status_split,
     valueBySupplier: data.value_by_supplier,
     valueByBranch: data.value_by_branch,
+    overdueBuckets: data.overdue_buckets,
     monthlyValueTrend: data.monthly_value_trend,
     statuses: data.statuses,
     suppliers: data.suppliers,

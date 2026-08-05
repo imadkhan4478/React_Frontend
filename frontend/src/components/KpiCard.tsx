@@ -84,7 +84,7 @@ export function KpiCard({ label, value, delta, direction, goodWhen = 'down', sub
             </span>
           )}
         </div>
-        <p className="font-display mt-3 text-2xl font-extrabold text-navy">{value}</p>
+        <p className="font-display mt-3 text-3xl font-extrabold text-navy">{value}</p>
         <p className="text-sm font-medium text-muted">{label}</p>
         {!hasDirection && delta && <p className="mt-1 text-xs text-muted">{delta}</p>}
         {sub && <p className="mt-1 text-xs text-muted">{sub}</p>}

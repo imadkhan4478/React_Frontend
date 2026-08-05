@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { ShieldAlert } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { FilterBar } from '@/components/FilterBar'
@@ -14,7 +14,7 @@ import { CategoryBar } from '@/components/charts/CategoryBar'
 import { Donut } from '@/components/charts/Donut'
 import { RankedBar } from '@/components/charts/RankedBar'
 import { AgingBuckets } from '@/components/charts/AgingBuckets'
-import { money, agingBuckets } from '@/lib/format'
+import { money } from '@/lib/format'
 import { usePurchasesDashboard } from '@/lib/api/usePurchasesDashboard'
 import { ApiError } from '@/lib/api/auth'
 
@@ -42,20 +42,6 @@ export function Purchases() {
     status, supplier, branch, item_category: category, mop, sourcing_o: sourcingOfficer,
     po_from_date: dateFrom || undefined, po_to_date: dateTo || undefined,
   })
-
-  // Days-overdue buckets are the one figure the endpoint doesn't compute, so
-  // they're still derived from rows here. The endpoint currently returns no
-  // rows at all, which leaves this chart empty until it exposes either the
-  // rows or the buckets themselves.
-  const aging = useMemo(
-    () =>
-      agingBuckets(
-        (data?.rows ?? [])
-          .filter((r) => r.status === 'Delayed' && r.days_overdue != null)
-          .map((r) => r.days_overdue!),
-      ),
-    [data],
-  )
 
   const kpis = data?.kpis
   const trend = (data?.monthlyValueTrend ?? []).map((p) => ({ month: p.month, value: Number((p.value / 1_000_000).toFixed(2)) }))
@@ -111,6 +97,7 @@ export function Purchases() {
             trendX="month"
             trendY="value"
             caption="PKR millions per month, current filter"
+            trendUnit="PKR (millions)"
           />
 
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
@@ -125,18 +112,18 @@ export function Purchases() {
             <InsightsCard title="Insights" tabs={INSIGHT_TABS} active={insightTab} onChange={setInsightTab} className="lg:col-span-2">
               {kpis.orders_count === 0 && <p className="py-12 text-center text-sm text-muted">No orders match the current filter.</p>}
               {kpis.orders_count > 0 && insightTab === 'branch' && (
-                <CategoryBar data={data.valueByBranch} category="label" value="value" height={300} />
+                <CategoryBar data={data.valueByBranch} category="label" value="value" height={300} unit="PKR" />
               )}
               {kpis.orders_count > 0 && insightTab === 'status' && (
                 <Donut labels={data.statusSplit.map((s) => s.label)} values={data.statusSplit.map((s) => s.value)} height={300} />
               )}
               {kpis.orders_count > 0 && insightTab === 'suppliers' && (
-                <RankedBar data={data.valueBySupplier} category="label" value="value" height={300} />
+                <RankedBar data={data.valueBySupplier} category="label" value="value" height={300} unit="PKR" />
               )}
             </InsightsCard>
 
             <ChartCard title="Delayed Orders — Days Overdue">
-              <AgingBuckets data={aging} height={300} />
+              <AgingBuckets data={data.overdueBuckets} height={300} unit="Orders" />
             </ChartCard>
           </div>
 

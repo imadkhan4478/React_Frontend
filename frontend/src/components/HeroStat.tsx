@@ -20,6 +20,8 @@ interface Props {
    * divider — for folding a page's whole header into its hero instead of
    * stacking a plain bar on top of it. */
   header?: ReactNode
+  /** Unit for the trend chart's value axis — "PKR (millions)", "Orders". */
+  trendUnit?: string
 }
 
 /** The page's headline KPI merged with its own trend chart into one glass
@@ -28,7 +30,7 @@ interface Props {
  * backdrop instead of competing with it as its own solid gradient block. */
 export function HeroStat({
   label, value, delta, direction = 'up', icon: Icon = Sparkles, trendData, trendX, trendY, caption,
-  trendHeight = 200, header,
+  trendHeight = 200, header, trendUnit,
 }: Props) {
   const { colors } = useTheme()
   const DeltaIcon = direction === 'down' ? ArrowDownRight : ArrowUpRight
@@ -47,7 +49,7 @@ export function HeroStat({
         <div className="flex items-start justify-between">
           <div>
             <p className="text-sm font-medium text-muted">{label}</p>
-            <p className="font-display mt-1 text-4xl font-extrabold tracking-tight text-navy">{value}</p>
+            <p className="font-display mt-1 text-5xl font-extrabold tracking-tight text-navy">{value}</p>
             {delta && (
               <span
                 className="mt-3 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold"
@@ -65,7 +67,7 @@ export function HeroStat({
           )}
         </div>
         <div className="mt-2">
-          <TrendLine data={trendData} x={trendX} y={trendY} height={trendHeight} />
+          <TrendLine data={trendData} x={trendX} y={trendY} height={trendHeight} unit={trendUnit} />
         </div>
         {caption && <p className="mt-1 text-xs text-muted">{caption}</p>}
       </CardContent>

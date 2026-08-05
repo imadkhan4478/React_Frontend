@@ -35,7 +35,7 @@ const INSIGHT_TABS = [
 // the one place that switches between the executive overview and each
 // module's own dashboard.
 const DASH_TABS = [
-  { value: 'overview', label: 'Overview' },
+  { value: 'overview', label: 'Supply Chain' },
   { value: 'purchases', label: 'Purchases' },
   { value: 'inventory', label: 'Inventory' },
   { value: 'imports', label: 'Imports' },
@@ -111,7 +111,7 @@ function StatTile({ label, value, delta, direction, goodWhen = 'down', spark, ic
           </span>
         )}
       </div>
-      <p className="font-display mt-3 text-2xl font-extrabold text-navy">{value}</p>
+      <p className="font-display mt-3 text-3xl font-extrabold text-navy">{value}</p>
       <p className="text-sm font-medium text-muted">{label}</p>
       {!hasDir && delta && <p className="mt-1 text-xs text-muted">{delta}</p>}
       {spark && <Sparkline values={spark} color={ink} />}
@@ -147,7 +147,7 @@ export function Dashboard() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl font-bold text-navy">Dashboards</h1>
+          <h1 className="font-display text-3xl font-bold text-navy">Dashboards</h1>
           <p className="text-sm text-muted">Executive overview, plus each module's own dashboard</p>
         </div>
         <SegmentedControl options={DASH_TABS} value={tab} onChange={setTab} />
@@ -175,7 +175,7 @@ export function Dashboard() {
                 <Sparkles size={12} />
                 Executive Dashboard
               </span>
-              <h1 className="font-display text-2xl font-extrabold leading-tight tracking-tight text-navy lg:text-3xl">
+              <h1 className="font-display text-3xl font-extrabold leading-tight tracking-tight text-navy lg:text-4xl">
                 {greeting()}{firstName ? `, ${firstName}` : ''} 👋
               </h1>
               <p className="mt-1 max-w-md text-sm text-muted">Here's how the supply chain is performing today.</p>
@@ -196,7 +196,7 @@ export function Dashboard() {
               { k: 'Avg Cycle Time', v: kpis.avgCycleTime.value },
             ].map((s) => (
               <div key={s.k}>
-                <p className="font-display text-xl font-extrabold text-navy">{s.v}</p>
+                <p className="font-display text-2xl font-extrabold text-navy">{s.v}</p>
                 <p className="text-xs font-medium text-muted">{s.k}</p>
               </div>
             ))}

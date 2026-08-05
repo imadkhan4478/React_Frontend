@@ -63,28 +63,13 @@ export function Inventory() {
     () => (data?.topItems ?? []).map((r) => ({ ...r, item: itemChartLabel(r.item) })),
     [data],
   )
-  // lowest_days_of_stock ranks items already at zero first, and there are far
-  // more than eight of those — so every bar it returns is zero-length and the
-  // chart draws nothing. Items at zero are already reported by the "out of
-  // stock" count above; what belongs here is the stock that still exists but is
-  // closest to running out, which is where reordering changes the outcome.
-  // Zeros are dropped so only real runways are plotted. This can only work off
-  // whatever rows the endpoint returns, and it currently returns none — see the
-  // note in the card below.
+  // The endpoint now excludes items already at zero from this ranking (they're
+  // reported by the "out of stock" count above instead), so every entry here
+  // is a real, non-zero runway — nothing left to filter client-side.
   const runningOutSoonest = useMemo(
-    () =>
-      (data?.rows ?? [])
-        .filter((r) => r.days_of_stock != null && r.days_of_stock > 0)
-        .sort((a, b) => (a.days_of_stock as number) - (b.days_of_stock as number))
-        .slice(0, 8)
-        .map((r) => ({ item: itemChartLabel(r.item ?? ''), days_of_stock: r.days_of_stock as number })),
+    () => (data?.lowestDaysOfStock ?? []).map((r) => ({ ...r, item: itemChartLabel(r.item) })),
     [data],
   )
-
-  // Distinguishes "the filters excluded everything" from "this endpoint no
-  // longer sends row-level data at all" — without it both look like an empty
-  // table, and the second one silently reads as a filtering bug.
-  const rowsUnavailable = data != null && data.rows === undefined
 
   return (
     <div className="flex flex-col gap-6">
@@ -125,7 +110,7 @@ export function Inventory() {
             <CardContent className="grid grid-cols-1 gap-6 p-6 lg:grid-cols-[1fr_auto]">
               <div className="flex flex-col justify-center">
                 <p className="text-sm font-medium text-muted">% At Risk</p>
-                <p className="font-display mt-1 text-4xl font-extrabold tracking-tight text-navy">
+                <p className="font-display mt-1 text-5xl font-extrabold tracking-tight text-navy">
                   {kpis.items_shown ? `${kpis.at_risk_pct}%` : '—'}
                 </p>
                 <p className="mt-1 text-xs text-muted">out of stock + below reorder, current filter</p>
@@ -157,13 +142,13 @@ export function Inventory() {
             <InsightsCard title="Insights" tabs={INSIGHT_TABS} active={insightTab} onChange={setInsightTab} className="lg:col-span-2">
               {kpis.items_shown === 0 && <p className="py-12 text-center text-sm text-muted">No items match the current filter.</p>}
               {kpis.items_shown > 0 && insightTab === 'branch' && (
-                <CategoryBar data={data.itemsByBranch} category="branch" value="items" height={300} />
+                <CategoryBar data={data.itemsByBranch} category="branch" value="items" height={300} unit="Items" />
               )}
               {kpis.items_shown > 0 && insightTab === 'risk' && (
-                <RankedBar data={data.atRiskByBranch} category="branch" value="at_risk" height={300} invertColor />
+                <RankedBar data={data.atRiskByBranch} category="branch" value="at_risk" height={300} invertColor unit="% at risk" />
               )}
               {kpis.items_shown > 0 && insightTab === 'top' && (
-                <RankedBar data={topItems} category="item" value="stock_qty" height={300} />
+                <RankedBar data={topItems} category="item" value="stock_qty" height={300} unit="Stock qty" />
               )}
             </InsightsCard>
 
@@ -173,16 +158,13 @@ export function Inventory() {
                   <p className="-mt-2 mb-3 text-xs text-muted">
                     Days of stock left at recent usage. Items already at zero are counted in “out of stock” above.
                   </p>
-                  <RankedBar data={runningOutSoonest} category="item" value="days_of_stock" height={272} />
+                  <RankedBar data={runningOutSoonest} category="item" value="days_of_stock" height={272} unit="Days left" />
                 </>
-              ) : rowsUnavailable ? (
-                <p className="py-12 text-center text-sm text-muted">
-                  Needs per-item stock rows, which this endpoint no longer returns — or a{' '}
-                  <code className="rounded bg-canvas-alt px-1 py-0.5 text-xs">lowest_days_of_stock</code> that excludes
-                  items already at zero.
-                </p>
               ) : (
-                <p className="py-12 text-center text-sm text-muted">No recent issuance history to estimate a runway from.</p>
+                <p className="py-12 text-center text-sm text-muted">
+                  Nothing with a runway to show — either every item in view is already out of stock (see the count
+                  above) or there's no recent issuance history to estimate one from.
+                </p>
               )}
             </ChartCard>
           </div>

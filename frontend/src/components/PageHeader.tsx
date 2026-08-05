@@ -16,7 +16,7 @@ export function PageHeader({
       <span className="h-8 w-1.5 rounded-full" style={{ backgroundColor: accent }} />
       <div>
         <h1
-          className="font-display text-2xl font-extrabold text-navy"
+          className="font-display text-3xl font-extrabold text-navy"
           style={{ textShadow: '0 1px 3px rgba(0,0,0,0.18)' }}
         >
           {title}

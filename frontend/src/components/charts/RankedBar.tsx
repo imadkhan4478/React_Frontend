@@ -1,7 +1,7 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, ReferenceLine, ResponsiveContainer } from 'recharts'
 import { useTheme } from '@/theme/ThemeContext'
 import { BRAND, BRAND_LIGHT, BRAND_DEEP, GOLD } from '@/theme/tokens'
-import { lerpColor, tooltipStyle } from './utils'
+import { lerpColor, tooltipStyle, compactNumber, axisLabel } from './utils'
 
 interface Props {
   data: Record<string, unknown>[]
@@ -12,6 +12,9 @@ interface Props {
   /** Highlight only the worst (highest) bar in risk-red instead of a
    * magnitude gradient — for "flag the one outlier" charts. */
   invertColor?: boolean
+  /** What the value axis measures — "PKR", "Days", "Jobs". Without it a bare
+   * number says nothing about what's being compared. */
+  unit?: string
 }
 
 // The category axis used to be a flat 130px, which was fine for mock labels
@@ -25,7 +28,7 @@ const MAX_AXIS_WIDTH = 240
 const CHAR_PX = 6.2
 
 /** Horizontal ranked bar — supplier performance, top items, etc. */
-export function RankedBar({ data, category, value, height = 320, benchmark, invertColor = false }: Props) {
+export function RankedBar({ data, category, value, height = 320, benchmark, invertColor = false, unit }: Props) {
   const { colors } = useTheme()
   const sorted = [...data].sort((a, b) => (a[value] as number) - (b[value] as number))
   const values = sorted.map((d) => d[value] as number)
@@ -44,9 +47,16 @@ export function RankedBar({ data, category, value, height = 320, benchmark, inve
 
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <BarChart data={sorted} layout="vertical" margin={{ top: 5, right: 24, left: 8, bottom: 5 }}>
+      <BarChart data={sorted} layout="vertical" margin={{ top: 5, right: 24, left: 8, bottom: unit ? 18 : 5 }}>
         <CartesianGrid horizontal={false} stroke={colors.line} />
-        <XAxis type="number" tick={{ fill: colors.muted, fontSize: 12 }} axisLine={{ stroke: colors.line }} tickLine={false} />
+        <XAxis
+          type="number"
+          tick={{ fill: colors.muted, fontSize: 12 }}
+          axisLine={{ stroke: colors.line }}
+          tickLine={false}
+          tickFormatter={compactNumber}
+          label={axisLabel(unit, 'x', colors.muted)}
+        />
         <YAxis
           type="category"
           dataKey={category}
