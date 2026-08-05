@@ -1,5 +1,6 @@
 from decimal import Decimal
-
+from app.loading.schemas.stores_schemas import PurchasesData
+from sqlalchemy import select, func
 #-----------------------------------------------------
 # PURCHASES DASHBOARD CALCULATIONS
 #
@@ -49,8 +50,15 @@ def total_value(rows):
 # HEADLINE NUMBERS (KPIS)
 #-------------------------------------
 
-def kpis(rows):
-    orders_count = len(rows)
+def kpis(rows, db):
+    orders = set()
+
+    for row in rows:
+        if row.po_number:
+            orders.add(row.po_number)
+    
+    orders_count = len(orders)
+           
     value = total_value(rows)
     avg_order_value = (value / orders_count) if orders_count else Decimal("0")
 

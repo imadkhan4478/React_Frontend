@@ -50,7 +50,7 @@ def purchases_dashboard(
             # The "view data" table is being removed from the dashboard, so
             # only the aggregates + filter option lists are returned (keeping
             # the payload in KBs, like the imports dashboard).
-            **serialize_purchases_dashboard(rows),
+            **serialize_purchases_dashboard(rows, db),
             "statuses": PURCHASE_STATUSES,
             **option_lists(db),
         }

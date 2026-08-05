@@ -44,9 +44,9 @@ def serialize_rows(rows):
 # THE AGGREGATES
 #-------------------------------------
 
-def serialize_purchases_dashboard(rows):
+def serialize_purchases_dashboard(rows, db):
     return {
-        "kpis": kpis(rows),
+        "kpis": kpis(rows, db),
         "status_split": status_split(rows),
         "value_by_supplier": value_by_supplier(rows),
         "value_by_branch": value_by_branch(rows),
