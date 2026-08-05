@@ -24,7 +24,9 @@ export function LiveDataState({ isLoading, isError, error }: {
         <span>
           {error instanceof ApiError && error.status === 401
             ? 'Signed in, but not with an account the backend recognizes yet — only the seeded admin account has live access right now.'
-            : 'Could not reach the backend — is it running?'}
+            : error instanceof ApiError && error.status === 403
+              ? "Signed in, but this account doesn't have permission to use this feature."
+              : 'Could not reach the backend — is it running?'}
         </span>
       </CardContent>
     </Card>

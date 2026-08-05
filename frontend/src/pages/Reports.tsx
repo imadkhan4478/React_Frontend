@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { FileSpreadsheet, FileText, Save, Trash2, Pencil, Eye, EyeOff, X, Database, Inbox, ListChecks } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { SegmentedControl } from '@/components/SegmentedControl'
@@ -10,56 +11,72 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { DataTable, type Column } from '@/components/DataTable'
-import { dateInRange } from '@/lib/format'
+import { Pagination } from '@/components/Pagination'
+import { LiveDataState } from '@/components/LiveDataState'
 import { useAuth } from '@/features/auth/AuthContext'
+import { ApiError } from '@/lib/api/auth'
+import { useDebounced } from '@/lib/useDebounced'
 import {
-  REPORT_TYPES, type ReportType, type ReportRow, type ReportFilters,
-  getReportRows, unionColumns, optionsFor, applyFilters,
-  SUPPLIERS, BRANCHES, ITEM_CATEGORIES, SHAFT_ITEMS, NON_SHAFT_ITEMS, MATERIALS,
-} from '@/lib/reportBuilder'
-import { exportExcel, exportPdf } from '@/lib/reportExport'
-import { getSavedReports, createSavedReport, updateSavedReport, deleteSavedReport, type SavedReport } from '@/lib/savedReports'
+  REPORT_TYPES, type ReportType, type ReportRow, type ReportFilters, type SavedReport, type SavedReportInput,
+  downloadReportExcel, fetchReportRowsForExport,
+  createSavedReport, updateSavedReport, deleteSavedReport,
+} from '@/lib/api/reports'
+import { useReportOptions, useReportData, useSavedReports } from '@/lib/api/useReports'
+import { type ReportColumn, unionColumns } from '@/lib/reportBuilder'
+import { exportPdf } from '@/lib/reportExport'
 
 const VIEWS = [
   { value: 'build', label: 'Build Report' },
   { value: 'saved', label: 'Saved Reports' },
 ] as const
 
-function passesDate(row: ReportRow, from: string, to: string): boolean {
-  if (!from && !to) return true
-  const d = row.date
-  if (!(d instanceof Date)) return true
-  return dateInRange(d, from, to)
-}
+const PAGE_SIZE = 25
 
 function slugify(name: string): string {
   return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'report'
 }
 
+function toTableColumns(cols: ReportColumn[]): Column[] {
+  return cols.map((col) => ({
+    key: col.key,
+    label: col.label,
+    align: col.align,
+    render: (row) => col.render(row[col.key], row as ReportRow),
+  }))
+}
+
+function savedReportFilters(r: SavedReport): ReportFilters {
+  return { types: r.types, item: r.filters.item, shaft: r.filters.shaft, supplier: r.filters.supplier, branch: r.filters.branch, category: r.filters.category }
+}
+
 export function Reports() {
   const { user } = useAuth()
+  const queryClient = useQueryClient()
   const [view, setView] = useState<(typeof VIEWS)[number]['value']>('build')
 
   const [types, setTypes] = useState<ReportType[]>(['purchases'])
   const [item, setItem] = useState<string[]>([])
   const [shaft, setShaft] = useState<string[]>([])
   const [supplier, setSupplier] = useState<string[]>([])
-  const [material, setMaterial] = useState<string[]>([])
   const [branch, setBranch] = useState<string[]>([])
   const [category, setCategory] = useState<string[]>([])
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
   const [saveName, setSaveName] = useState('')
   const [saveMessage, setSaveMessage] = useState('')
+  const [exportingPdf, setExportingPdf] = useState(false)
+  const [actionError, setActionError] = useState('')
   // Set while editing an existing saved report (loaded via SavedReportsView's
   // Edit button) instead of building a fresh one — swaps "Save as Report"
   // for "Update Report" and lets Save-as-New branch off it explicitly.
-  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<number | null>(null)
 
-  const [savedReports, setSavedReports] = useState<SavedReport[]>(() => getSavedReports())
+  const debouncedSearch = useDebounced(search)
+  const hasTypes = types.length > 0
 
-  const allRows = useMemo(() => getReportRows(types), [types])
+  const { data: options } = useReportOptions(types, hasTypes)
   const availableColumns = useMemo(() => unionColumns(types), [types])
 
   // "Select data → see every header those types have → pick which ones to
@@ -79,44 +96,44 @@ export function Reports() {
   }, [availableColumns])
 
   // Item Name and Shaft are two lenses onto the same underlying `item`
-  // field (see reportBuilder's applyFilters) — split so each dropdown only
-  // ever offers items it actually makes sense to find there, instead of
-  // "Round Bar" sitting in the same list as "Thread Gauge".
-  const itemOptions = useMemo(() => optionsFor(allRows, 'item', NON_SHAFT_ITEMS), [allRows])
-  const shaftOptions = useMemo(() => optionsFor(allRows, 'item', SHAFT_ITEMS), [allRows])
-  const supplierOptions = useMemo(() => optionsFor(allRows, 'supplier', SUPPLIERS), [allRows])
-  const materialOptions = useMemo(() => optionsFor(allRows, 'material', MATERIALS), [allRows])
-  const branchOptions = useMemo(() => optionsFor(allRows, 'branch', BRANCHES), [allRows])
-  const categoryOptions = useMemo(() => optionsFor(allRows, 'category', ITEM_CATEGORIES), [allRows])
-
-  const filters: ReportFilters = { item, shaft, supplier, material, branch, category }
-
-  const filteredRows = useMemo(
-    () => applyFilters(allRows, filters).filter((row) => passesDate(row, dateFrom, dateTo)),
-    [allRows, item, shaft, supplier, material, branch, category, dateFrom, dateTo],
+  // field — the backend keeps its curated shaft list separate from the
+  // general item list, so this just keeps the general list from also
+  // offering the four shaft names a second time.
+  const itemOptions = useMemo(
+    () => (options?.items ?? []).filter((i) => !(options?.shafts ?? []).includes(i)),
+    [options],
   )
+  const shaftOptions = options?.shafts ?? []
+  const supplierOptions = options?.suppliers ?? []
+  const branchOptions = options?.branches ?? []
+  const categoryOptions = options?.categories ?? []
+
+  const filters: ReportFilters = useMemo(
+    () => ({
+      types, item, shaft, supplier, branch, category,
+      date_from: dateFrom || undefined,
+      date_to: dateTo || undefined,
+      search: debouncedSearch.trim() || undefined,
+    }),
+    [types, item, shaft, supplier, branch, category, dateFrom, dateTo, debouncedSearch],
+  )
+
+  // Any filter change can shift the result set out from under the current
+  // page (e.g. page 5 of 5 collapsing to 2 pages) — reset to page 1 rather
+  // than risk landing on an empty page.
+  useEffect(() => {
+    setPage(1)
+  }, [filters])
+
+  const { data, isLoading, isError, error } = useReportData(filters, page, PAGE_SIZE, hasTypes)
+  const pagination = data?.pagination
 
   const visibleColumns = useMemo(
     () => availableColumns.filter((c) => selectedColumns.includes(c.key)),
     [availableColumns, selectedColumns],
   )
 
-  const searchedRows = useMemo(() => {
-    if (!search.trim()) return filteredRows
-    const needle = search.toLowerCase()
-    return filteredRows.filter((row) => visibleColumns.some((col) => col.text(row[col.key], row).toLowerCase().includes(needle)))
-  }, [filteredRows, search, visibleColumns])
-
-  const tableColumns: Column[] = useMemo(
-    () =>
-      visibleColumns.map((col) => ({
-        key: col.key,
-        label: col.label,
-        align: col.align,
-        render: (row) => col.render!(row[col.key], row as ReportRow),
-      })),
-    [visibleColumns],
-  )
+  const tableColumns = useMemo(() => toTableColumns(visibleColumns), [visibleColumns])
 
   const typeLabels = types.map((t) => REPORT_TYPES.find((r) => r.value === t)!.label)
   const stamp = new Date().toISOString().slice(0, 10)
@@ -132,55 +149,101 @@ export function Reports() {
     skipColumnResetRef.current = true
     setTypes(report.types)
     setSelectedColumns(report.columns)
-    setItem(report.filters.item)
-    setShaft(report.filters.shaft)
-    setSupplier(report.filters.supplier)
-    setMaterial(report.filters.material)
-    setBranch(report.filters.branch)
-    setCategory(report.filters.category)
+    setItem(report.filters.item ?? [])
+    setShaft(report.filters.shaft ?? [])
+    setSupplier(report.filters.supplier ?? [])
+    setBranch(report.filters.branch ?? [])
+    setCategory(report.filters.category ?? [])
     setEditingId(report.id)
     setSaveName(report.name)
     setSaveMessage('')
     setView('build')
   }
 
-  function handleSave() {
+  async function saveReport(targetId: number | null) {
     if (!user || !saveName.trim() || types.length === 0 || selectedColumns.length === 0) return
-    if (editingId) {
-      updateSavedReport(editingId, { name: saveName.trim(), createdBy: user.name, types, columns: selectedColumns, filters })
-      setSaveMessage(`Updated "${saveName.trim()}".`)
-    } else {
-      createSavedReport({ name: saveName.trim(), createdBy: user.name, types, columns: selectedColumns, filters })
-      setSaveMessage(`Saved as "${saveName.trim()}" — see it under Saved Reports.`)
+    const input: SavedReportInput = {
+      name: saveName.trim(), types, columns: selectedColumns,
+      filters: { item, shaft, supplier, branch, category },
     }
-    setSavedReports(getSavedReports())
+    try {
+      if (targetId) {
+        await updateSavedReport(targetId, input)
+        setSaveMessage(`Updated "${saveName.trim()}".`)
+      } else {
+        await createSavedReport(input)
+        setEditingId(null)
+        setSaveMessage(`Saved as "${saveName.trim()}" — see it under Saved Reports.`)
+      }
+      queryClient.invalidateQueries({ queryKey: ['saved-reports'] })
+    } catch (e) {
+      setSaveMessage(e instanceof ApiError ? e.message : 'Could not save — is the backend reachable?')
+    }
+  }
+
+  function handleSave() {
+    saveReport(editingId)
   }
 
   function handleSaveAsNew() {
-    setEditingId(null)
-    handleSave()
+    saveReport(null)
   }
 
-  function handleDeleteSaved(id: string) {
-    deleteSavedReport(id)
-    setSavedReports(getSavedReports())
-    if (editingId === id) resetBuilder()
+  async function handleDeleteSaved(id: number) {
+    setActionError('')
+    try {
+      await deleteSavedReport(id)
+      queryClient.invalidateQueries({ queryKey: ['saved-reports'] })
+      if (editingId === id) resetBuilder()
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : 'Could not delete — is the backend reachable?')
+    }
   }
 
-  // Always recomputed from the current mock data set, never from whatever
-  // was true when the template was saved — that's the whole point of a
-  // "static" report: fixed shape, live numbers.
-  function freshRowsFor(report: SavedReport) {
-    return applyFilters(getReportRows(report.types), report.filters)
+  async function handleExportExcel() {
+    setActionError('')
+    try {
+      await downloadReportExcel(filters, visibleColumns.map((c) => c.key), `${fileBase}.xlsx`)
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : 'Export failed — is the backend reachable?')
+    }
   }
 
-  function downloadSaved(report: SavedReport, format: 'xlsx' | 'pdf') {
-    const rows = freshRowsFor(report)
-    const cols = unionColumns(report.types).filter((c) => report.columns.includes(c.key))
+  async function handleExportPdf() {
+    setActionError('')
+    setExportingPdf(true)
+    try {
+      const { rows: exportRows, truncated, total } = await fetchReportRowsForExport(filters)
+      const note = truncated
+        ? `Showing the first ${exportRows.length.toLocaleString()} of ${total.toLocaleString()} records.`
+        : undefined
+      exportPdf(exportRows, visibleColumns, `${fileBase}.pdf`, 'QG-IRS Report', note)
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : 'Export failed — is the backend reachable?')
+    } finally {
+      setExportingPdf(false)
+    }
+  }
+
+  async function handleDownloadSaved(report: SavedReport, format: 'xlsx' | 'pdf') {
+    setActionError('')
+    const savedFilters = savedReportFilters(report)
     const today = new Date().toISOString().slice(0, 10)
     const base = `qg-irs-${slugify(report.name)}-${today}`
-    if (format === 'xlsx') exportExcel(rows, cols, `${base}.xlsx`)
-    else exportPdf(rows, cols, `${base}.pdf`, report.name)
+    try {
+      if (format === 'xlsx') {
+        await downloadReportExcel(savedFilters, report.columns, `${base}.xlsx`)
+      } else {
+        const cols = unionColumns(report.types).filter((c) => report.columns.includes(c.key))
+        const { rows: exportRows, truncated, total } = await fetchReportRowsForExport(savedFilters)
+        const note = truncated
+          ? `Showing the first ${exportRows.length.toLocaleString()} of ${total.toLocaleString()} records.`
+          : undefined
+        exportPdf(exportRows, cols, `${base}.pdf`, report.name, note)
+      }
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : 'Export failed — is the backend reachable?')
+    }
   }
 
   return (
@@ -198,14 +261,14 @@ export function Reports() {
         <SegmentedControl options={VIEWS} value={view} onChange={setView} />
       </div>
 
+      {actionError && <p className="-mb-2 pl-1 text-xs font-medium text-risk">{actionError}</p>}
+
       {view === 'saved' ? (
         <SavedReportsView
-          reports={savedReports}
           currentUser={user}
           onDelete={handleDeleteSaved}
-          onDownload={downloadSaved}
+          onDownload={handleDownloadSaved}
           onEdit={loadReportIntoBuilder}
-          freshRowsFor={freshRowsFor}
         />
       ) : (
         <>
@@ -220,7 +283,7 @@ export function Reports() {
             </div>
           )}
 
-          <FilterBar search={{ value: search, onChange: setSearch, placeholder: 'Search within results…' }}>
+          <FilterBar search={{ value: search, onChange: setSearch, placeholder: 'Search reference, item, supplier…' }}>
             <MultiSelectFilter
               label="Data"
               options={REPORT_TYPES.map((t) => t.label)}
@@ -230,13 +293,12 @@ export function Reports() {
             {itemOptions.length > 0 && <MultiSelectFilter label="Item Name" options={itemOptions} value={item} onChange={setItem} />}
             {shaftOptions.length > 0 && <MultiSelectFilter label="Shaft" options={shaftOptions} value={shaft} onChange={setShaft} />}
             {supplierOptions.length > 0 && <MultiSelectFilter label="Supplier" options={supplierOptions} value={supplier} onChange={setSupplier} />}
-            {materialOptions.length > 0 && <MultiSelectFilter label="Material" options={materialOptions} value={material} onChange={setMaterial} />}
             {branchOptions.length > 0 && <MultiSelectFilter label="Branch" options={branchOptions} value={branch} onChange={setBranch} />}
             {categoryOptions.length > 0 && <MultiSelectFilter label="Category" options={categoryOptions} value={category} onChange={setCategory} />}
             <DateRangeFilter label="Date" from={dateFrom} to={dateTo} onFromChange={setDateFrom} onToChange={setDateTo} />
           </FilterBar>
 
-          {types.length === 0 ? (
+          {!hasTypes ? (
             <Card>
               <CardContent className="flex flex-col items-center gap-3 p-12 text-center">
                 <span className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-soft text-brand">
@@ -262,7 +324,7 @@ export function Reports() {
                 <CardContent className="flex flex-wrap items-center justify-between gap-4 p-4">
                   <span className="inline-flex items-center gap-2 text-sm font-semibold text-ink">
                     <ListChecks size={16} className="text-brand" />
-                    {searchedRows.length.toLocaleString()} records
+                    {(pagination?.total ?? 0).toLocaleString()} records
                   </span>
                   <div className="flex flex-wrap items-center gap-2">
                     <Input
@@ -284,28 +346,43 @@ export function Reports() {
                       </Button>
                     )}
                     <div className="h-6 w-px bg-line" />
-                    <Button onClick={() => exportExcel(searchedRows, visibleColumns, `${fileBase}.xlsx`)} disabled={searchedRows.length === 0 || visibleColumns.length === 0}>
+                    <Button onClick={handleExportExcel} disabled={(pagination?.total ?? 0) === 0 || visibleColumns.length === 0}>
                       <FileSpreadsheet size={15} />
                       Export Excel
                     </Button>
                     <Button
                       variant="outline"
-                      onClick={() => exportPdf(searchedRows, visibleColumns, `${fileBase}.pdf`, 'QG-IRS Report')}
-                      disabled={searchedRows.length === 0 || visibleColumns.length === 0}
+                      onClick={handleExportPdf}
+                      disabled={(pagination?.total ?? 0) === 0 || visibleColumns.length === 0 || exportingPdf}
                     >
                       <FileText size={15} />
-                      Export PDF
+                      {exportingPdf ? 'Preparing…' : 'Export PDF'}
                     </Button>
                   </div>
                 </CardContent>
               </Card>
               {saveMessage && <p className="-mt-3 pl-1 text-xs font-medium text-healthy">{saveMessage}</p>}
 
-              <Card>
-                <CardContent className="p-0">
-                  <DataTable columns={tableColumns} rows={searchedRows as unknown as Record<string, unknown>[]} height={520} />
-                </CardContent>
-              </Card>
+              <LiveDataState isLoading={isLoading} isError={isError} error={error} />
+
+              {!isLoading && !isError && (
+                <Card>
+                  <CardContent className="flex flex-col gap-0 p-0">
+                    <DataTable columns={tableColumns} rows={(data?.rows ?? []) as unknown as Record<string, unknown>[]} height={520} />
+                    {pagination && (
+                      <div className="px-3 pb-3">
+                        <Pagination
+                          page={pagination.page}
+                          pageCount={Math.max(1, pagination.total_pages)}
+                          total={pagination.total}
+                          pageSize={pagination.page_size}
+                          onPage={setPage}
+                        />
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
             </>
           )}
         </>
@@ -315,18 +392,21 @@ export function Reports() {
 }
 
 function SavedReportsView({
-  reports, currentUser, onDelete, onDownload, onEdit, freshRowsFor,
+  currentUser, onDelete, onDownload, onEdit,
 }: {
-  reports: SavedReport[]
-  currentUser: { name: string; isAdmin: boolean } | null
-  onDelete: (id: string) => void
+  currentUser: { username: string; isAdmin: boolean } | null
+  onDelete: (id: number) => void
   onDownload: (report: SavedReport, format: 'xlsx' | 'pdf') => void
   onEdit: (report: SavedReport) => void
-  freshRowsFor: (report: SavedReport) => ReportRow[]
 }) {
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const { data: reports, isLoading, isError, error } = useSavedReports()
+  const [expandedId, setExpandedId] = useState<number | null>(null)
 
-  if (reports.length === 0) {
+  if (isLoading || isError) {
+    return <LiveDataState isLoading={isLoading} isError={isError} error={error} />
+  }
+
+  if (!reports || reports.length === 0) {
     return (
       <Card>
         <CardContent className="flex flex-col items-center gap-3 p-12 text-center">
@@ -342,20 +422,9 @@ function SavedReportsView({
   return (
     <div className="flex flex-col gap-3">
       {reports.map((r) => {
-        const canManage = currentUser && (currentUser.isAdmin || currentUser.name === r.createdBy)
+        const canManage = currentUser && (currentUser.isAdmin || currentUser.username === r.created_by)
         const typeLabels = r.types.map((t) => REPORT_TYPES.find((rt) => rt.value === t)?.label ?? t).join(', ')
         const expanded = expandedId === r.id
-
-        // Recomputed on every expand, not cached — the whole point of View
-        // here is "what does this look like right now."
-        const previewRows = expanded ? freshRowsFor(r) : []
-        const previewColumns = expanded ? unionColumns(r.types).filter((c) => r.columns.includes(c.key)) : []
-        const previewTableColumns: Column[] = previewColumns.map((col) => ({
-          key: col.key,
-          label: col.label,
-          align: col.align,
-          render: (row) => col.render!(row[col.key], row as ReportRow),
-        }))
 
         return (
           <Card key={r.id}>
@@ -364,7 +433,7 @@ function SavedReportsView({
                 <div className="min-w-0">
                   <p className="font-display text-base font-bold text-navy">{r.name}</p>
                   <p className="mt-0.5 text-xs text-muted">
-                    {typeLabels} · {r.columns.length} columns · saved by {r.createdBy} on {new Date(r.createdAt).toLocaleDateString()}
+                    {typeLabels} · {r.columns.length} columns · saved by {r.created_by ?? 'unknown'} on {new Date(r.created_at).toLocaleDateString()}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
@@ -400,18 +469,42 @@ function SavedReportsView({
                 </div>
               </div>
 
-              {expanded && (
-                <div className="animate-fade-in-up rounded-xl border border-line">
-                  <p className="border-b border-line px-3 py-2 text-xs text-muted">
-                    {previewRows.length.toLocaleString()} records, live as of right now
-                  </p>
-                  <DataTable columns={previewTableColumns} rows={previewRows as unknown as Record<string, unknown>[]} height={360} />
-                </div>
-              )}
+              {expanded && <SavedReportPreview report={r} />}
             </CardContent>
           </Card>
         )
       })}
+    </div>
+  )
+}
+
+/** Recomputed on every expand, not cached — the whole point of View here is
+ * "what does this look like right now." Just the first page: this is a
+ * quick look at the shape of the report, not a substitute for downloading
+ * it — Excel/PDF pull the full filtered set. */
+function SavedReportPreview({ report }: { report: SavedReport }) {
+  const filters = useMemo(() => savedReportFilters(report), [report])
+  const { data, isLoading, isError, error } = useReportData(filters, 1, 50)
+  const previewColumns = useMemo(
+    () => toTableColumns(unionColumns(report.types).filter((c) => report.columns.includes(c.key))),
+    [report.types, report.columns],
+  )
+
+  return (
+    <div className="animate-fade-in-up rounded-xl border border-line">
+      {isLoading || isError ? (
+        <div className="p-3">
+          <LiveDataState isLoading={isLoading} isError={isError} error={error} />
+        </div>
+      ) : (
+        <>
+          <p className="border-b border-line px-3 py-2 text-xs text-muted">
+            {(data?.pagination.total ?? 0).toLocaleString()} records, live as of right now
+            {(data?.pagination.total ?? 0) > 50 ? ' — showing the first 50' : ''}
+          </p>
+          <DataTable columns={previewColumns} rows={(data?.rows ?? []) as unknown as Record<string, unknown>[]} height={360} />
+        </>
+      )}
     </div>
   )
 }

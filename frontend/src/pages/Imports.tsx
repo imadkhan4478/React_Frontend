@@ -15,12 +15,10 @@ import { useImportsDashboard } from '@/lib/api/useImportsDashboard'
 import { ApiError } from '@/lib/api/auth'
 import type { ValueRow } from '@/lib/api/importsDashboard'
 
-// Backed by the real database (app/dashboard/imports), not
-// lib/mockData/imports.ts — that mock module still exists and still backs
-// Reports' "Imports" data type there, it's just not used on this page
-// anymore. The backend's filters only take one value each (plain query
-// params, not arrays), so its filters are single-select. Like the other live
-// dashboards, this page is KPIs and charts only.
+// Backed by the real database (app/dashboard/imports). The backend's filters
+// only take one value each (plain query params, not arrays), so its filters
+// are single-select. Like the other live dashboards, this page is KPIs and
+// charts only.
 function toMillions(rows: ValueRow[]): ValueRow[] {
   return rows.map((r) => ({ ...r, value: Number((r.value / 1_000_000).toFixed(2)) }))
 }

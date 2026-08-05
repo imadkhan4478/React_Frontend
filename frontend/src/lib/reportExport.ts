@@ -1,29 +1,27 @@
-import * as XLSX from 'xlsx'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import type { ReportColumn, ReportRow } from './reportBuilder'
+import type { ReportColumn } from './reportBuilder'
+import type { ReportRow } from './api/reports'
 
-function toRows(rows: ReportRow[], columns: ReportColumn[]): string[][] {
-  return rows.map((row) => columns.map((col) => col.text(row[col.key], row)))
-}
-
-export function exportExcel(rows: ReportRow[], columns: ReportColumn[], filename: string) {
-  const header = columns.map((c) => c.label)
-  const body = toRows(rows, columns)
-  const sheet = XLSX.utils.aoa_to_sheet([header, ...body])
-  const workbook = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(workbook, sheet, 'Report')
-  XLSX.writeFile(workbook, filename)
-}
-
-export function exportPdf(rows: ReportRow[], columns: ReportColumn[], filename: string, title: string) {
+/**
+ * PDF is generated client-side because the backend has no PDF export endpoint
+ * (only /reports/export, which streams .xlsx) — Excel downloads go straight
+ * to that endpoint instead (see downloadReportExcel in lib/api/reports.ts).
+ */
+export function exportPdf(rows: ReportRow[], columns: ReportColumn[], filename: string, title: string, note?: string) {
   const doc = new jsPDF({ orientation: columns.length > 6 ? 'landscape' : 'portrait' })
   doc.setFontSize(13)
   doc.text(title, 14, 15)
+  if (note) {
+    doc.setFontSize(9)
+    doc.setTextColor(140)
+    doc.text(note, 14, 21)
+    doc.setTextColor(0)
+  }
   autoTable(doc, {
     head: [columns.map((c) => c.label)],
-    body: toRows(rows, columns),
-    startY: 20,
+    body: rows.map((row) => columns.map((col) => col.text(row[col.key], row))),
+    startY: note ? 26 : 20,
     styles: { fontSize: 7, cellPadding: 2 },
     headStyles: { fillColor: [15, 23, 42] },
   })

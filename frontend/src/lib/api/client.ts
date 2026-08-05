@@ -26,3 +26,17 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
 
   return res.json() as Promise<T>
 }
+
+/** Same contract as apiFetch, but for a binary download (the Reports Excel
+ * export) instead of JSON — no Content-Type request header, and the response
+ * body is read as a Blob rather than parsed. */
+export async function apiFetchBlob(path: string, init: RequestInit = {}): Promise<Blob> {
+  const res = await fetch(`${BASE_URL}${path}`, { ...init, credentials: 'include' })
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    throw new ApiError(res.status, body?.detail ?? `Request failed (${res.status})`)
+  }
+
+  return res.blob()
+}
