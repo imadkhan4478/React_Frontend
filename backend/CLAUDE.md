@@ -53,6 +53,7 @@ app/
   trucking/          jobs: header + vehicle children + history + revert
   logs/              activity-log middleware + admin live feed (WebSocket)
   dashboard/         imports · logistics · purchases · inventory · whole (overview)
+  reports/           cross-module report builder (4 types → one normalised row) + saved templates
   loading/           Excel → DB migration loaders + stores schemas (Stock, Issuance, StoreRequisition, PurchasesData)
 React_Frontend-main/frontend/   React SPA
 ```
@@ -69,7 +70,8 @@ endpoint, all hanging off a shared `router`, listed in `routes/__init__.py`).
 On startup: import every model module (so `Base.metadata` knows all tables) →
 `create_all` → seed the four roles and a default admin if absent → add CORS →
 `include_router` for every module (data-entry, masters, auth, logs, and the five
-dashboards).
+dashboards). **Startup does not load data** — that is the separate
+`python -m app.loading.scripts.load_all` CLI (see the loading module).
 
 Route files self-register by importing the shared `router` and decorating it;
 `routes/__init__.py` imports every route file so one `include_router` wires the
@@ -249,28 +251,92 @@ new activity over a WebSocket.
 
 ## dashboards (`app/dashboard/*`)
 
-Five read-only dashboards — **imports, logistics, purchases, inventory, whole
-(overview)** — each at `GET /dashboard/<name>`. All figures are derived at
-request time from the source tables; filter option lists are built dynamically
-from the whole table; multi-select filters are repeated query params.
+Read-only dashboards. Every figure is derived at request time from the source
+tables; filter option lists are built dynamically from the whole table;
+multi-select filters are repeated query params; and each returns **aggregates +
+option lists only — no row lists** (the per-row "view data" table was dropped,
+keeping payloads in KBs).
 
-- imports/logistics read the operational tables; **purchases** and **inventory**
-  read the flat loaded stores tables (`purchases_data`, `stock`, `issuance`,
-  `store_requisition`) and return **aggregates + option lists only** (the
-  per-row "view data" table was dropped, so no row list is shipped — keeps the
-  payload in KBs).
-- Purchases derives an order **status** (Pending/Completed/Delayed) and overdue;
-  inventory derives **stock status**, **reorder level** (from store
-  requisitions), and **days-of-stock runway** (from issuance).
+- **imports** `GET /dashboard/imports` — operational consignments.
+- **logistics** — **three tab endpoints**, each its own data source + filters:
+  `GET /dashboard/logistics/shipments` (`LogisticsConsignment`), `/packing`
+  (`LogisticsPackage` + its order), and `/transport` (**`TruckingConsignment`** —
+  export trucking; `customer`/`city`/`province` resolved from the linked
+  logistics order via `source_ref`). The Documentation tab is **not** built —
+  its per-document status data was never loaded.
+- **purchases** `GET /dashboard/purchases` and **inventory**
+  `GET /dashboard/inventory` — the flat loaded stores tables (`purchases_data`,
+  `stock`, `issuance`, `store_requisition`). Purchases derives an order status
+  (Pending/Completed/Delayed) + overdue; inventory derives stock status,
+  **reorder level** (from store requisitions) and **days-of-stock runway** (from
+  issuance).
+- **whole** — cross-module overview.
 - **All the formulas are in `calculations.md`.**
+
+## reports — `/reports`
+
+The **cross-module report builder**: pick one or more of four data types
+(**purchases, imports, inventory, logistics**), filter them, and get one flat
+table back — the four sources normalised into a single row shape (shared keys
+`ref/item/supplier/branch/category/status/value/date` + type-specific keys; a
+key a type has no value for is null, and every row carries its `type`). Unlike
+the dashboards this **does** return rows (a report is a table you download), so
+it is **paginated**. Reuses the dashboard derivations (purchase status, stock
+status + reorder level, logistics cost/kg + stage) — a figure in a report
+matches the same figure on its dashboard.
+
+- **`GET /reports/data`** — `types[]` + the shared filters (`item`, `supplier`,
+  `branch`, `category`, `date_from`/`date_to`, `search`) + `page`/`page_size`.
+  The result is the selected types **concatenated in a fixed order**
+  (purchases→imports→inventory→logistics) and paged as one list; only the rows
+  on the page are ever fetched (`plan_slices` maps the global offset/limit to a
+  per-type sub-offset/limit, after a cheap `COUNT` per type).
+- **Filter ↔ type support** (`FILTER_SUPPORT`): a type that can't honour an
+  active filter is **dropped entirely**, mirroring the front end — logistics has
+  no branch, so filtering by branch hides logistics; inventory has no date, so a
+  date range hides inventory. `search` never drops a type.
+- **`GET /reports/export`** — same query, whole filtered set (capped at 20 000),
+  `columns[]` picks/orders the sheet columns; `xlsx_response`. **`GET
+  /reports/options`** — distinct dropdown values (items/suppliers/branches/
+  categories) scoped to the selected types.
+- **Saved templates** — `SavedReport` (`types`/`columns`/`filters` as JSON, no
+  date range — chosen fresh each run; soft-deleted like everything). The list is
+  **shared** (everyone who can reach Reports sees all templates), replacing the
+  front end's localStorage. `GET/POST /reports/saved`, `GET/PUT/DELETE
+  /reports/saved/{id}`. Read is open to all four roles; create/edit/delete is an
+  authoring action (admin/manager/entry operator — viewers excluded), and an
+  entry operator may only touch their own.
+- **Dropped for want of a backend source** (by decision): imports `customer` /
+  `weight` / `shipping line` / `bank` / `documentation status`; inventory
+  `last_restocked`; purchases `material`. Imports `ref` falls back to the LC
+  instrument number (then `IMP-{id}`); `ppc_store` stays a date.
+- The front end (`Reports.tsx`, `reportBuilder.tsx`, `savedReports.ts`) is still
+  mock + localStorage — **not yet wired** to these endpoints.
 
 ## loading
 
 One-off Excel → DB migration loaders (pandas + raw `psycopg2`, not the ORM):
-stores tables and the imports sheet. Keyed grouping, name→id resolution, explicit
-ids + sequence bumping. `stores_schemas.py` defines the flat stores models
-(`Stock`, `Issuance`, `StoreRequisition`, `PurchasesData`) that the purchases &
-inventory dashboards read.
+stores tables, the imports sheet, and the logistics workbook (merged from three
+sheets into orders + item/package/container children). Keyed grouping, name→id
+resolution, explicit ids + sequence bumping. Because the inserts are raw, any
+NOT-NULL column with only a Python-side default must be set explicitly, and
+enum-backed columns are **normalised onto the canonical enums** — e.g. the
+logistics loader maps the workbook's status vocabulary onto `LogisticsStatus` /
+`PackingStatus` and **defaults anything unmapped**, so junk (stray dates, sizes)
+never lands in a status column. `stores_schemas.py` defines the flat stores
+models (`Stock`, `Issuance`, `StoreRequisition`, `PurchasesData`) the purchases
+& inventory dashboards read.
+
+- **Each loader reads _every_ workbook in its folder** (`etl_common.list_excel_files`
+  + `read_and_concat`), skipping `~$` lock files — dropping another period's file
+  into the folder loads it too, no code change. Multiple workbooks in one folder
+  must share the same sheet structure.
+- **Loading is an explicit CLI, never an import side effect.** Run
+  **`python -m app.loading.scripts.load_all`** for a destructive full reload
+  (drop → `create_all` → load). It is **not** run on server start: doing so on
+  every start (and every `--reload`) silently doubled `purchases_data` (no natural
+  key, and the DROP list had `purchases` instead of `purchases_data`, so the
+  clear was a no-op). `app.main` only does `create_all` + seed on startup.
 
 ---
 

@@ -6,7 +6,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 
 from app.database import Base, SessionLocal, engine
-from app.loading.scripts.load_all import call_load
 
 # Importing the model modules registers every table on Base.metadata, so
 # create_all below knows about all of them. Nothing is created until this
@@ -18,6 +17,7 @@ import app.logistics.models
 import app.trucking.models
 import app.logs.models
 import app.loading.schemas.stores_schemas
+import app.reports.models
 
 from app.accounts.models import Role, User
 
@@ -31,9 +31,10 @@ from app.trucking.routes import router as trucking_router
 from app.logs.routes import router as logs_router
 from app.dashboard.imports.routes import router as imports_dashboard_router
 from app.dashboard.logistics.routes import router as logistics_dashboard_router
-from app.dashboard.whole.routes import router as overview_dashboard_router
+# from app.dashboard.whole.routes import router as overview_dashboard_router
 from app.dashboard.purchases.routes import router as purchases_dashboard_router
 from app.dashboard.inventory.routes import router as inventory_dashboard_router
+from app.reports.routes import router as reports_router
 
 # The auth package has no populated __init__, so its two route files are
 # imported by hand to attach them to the auth router.
@@ -143,7 +144,6 @@ app = FastAPI(title="Supply Chain ERP")
 ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "http://127.0.0.1:5174",
     "http://127.0.0.1:5175",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
@@ -171,9 +171,10 @@ app.include_router(trucking_router)
 app.include_router(logs_router)
 app.include_router(imports_dashboard_router)
 app.include_router(logistics_dashboard_router)
-app.include_router(overview_dashboard_router)
+# app.include_router(overview_dashboard_router)
 app.include_router(purchases_dashboard_router)
 app.include_router(inventory_dashboard_router)
+app.include_router(reports_router)
 
 
 @app.get("/")
@@ -191,5 +192,7 @@ create_tables()
 seed_roles()
 seed_admin()
 
-# Load stores data
-call_load()
+# Loading the source workbooks is NOT done here — it is a destructive full
+# reload and must be run explicitly, not on every server start (which is what
+# duplicated purchases_data):
+#     python -m app.loading.scripts.load_all
