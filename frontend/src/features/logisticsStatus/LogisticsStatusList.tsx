@@ -11,12 +11,14 @@ import { useAuth } from '@/features/auth/AuthContext'
 import { can } from '@/lib/roleAccess'
 import {
   totalNetWeight, totalPackageGrossWeight, orderTypeLabel, jobNumbers, batchDisplayLabel,
-  arrivalDelayDays,
+  arrivalDelayDays, latestPlannedRfd, latestActualRfd,
 } from '@/features/logisticsStatus/schema'
 import { exportListExcel, exportListPdf, type ListColumn } from '@/lib/listExport'
 import { usePagination, Pagination, useSort, SortHeader } from '@/components/Pagination'
+import { SegmentedControl } from '@/components/SegmentedControl'
+import { ServiceJobsTab } from './ServiceJobsTab'
 import {
-  getLogisticsOrders, deriveImportFobRequests,
+  getLogisticsOrders,
   customerList, orderTypeList, statusList,
   type LogisticsOrder, type LogisticsFilters,
 } from '@/lib/logisticsStatusData'
@@ -75,14 +77,15 @@ function TruckingHandoffBadge({ order }: { order: LogisticsOrder }) {
  * Incoterm — plus Status and actions, which every other list in this app
  * keeps.
  *
- * Below the orders table, a read-only "Open Requests: Import FOB" feed (FOB
- * imports needing Logistics to arrange sea freight and a clearing agent —
- * managed in Imports Status, linked back there).
+ * An Orders / Service Jobs tab switch sits above the table — Service Jobs
+ * (ServiceJobsTab) holds the read-only Import FOB feed alongside owned
+ * Customer Rework jobs, replacing the old inline FOB table here.
  */
 export function LogisticsStatusList() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const [filters, setFilters] = useState<LogisticsFilters>({})
+  const [tab, setTab] = useState<'orders' | 'services'>('orders')
 
   const rowsRaw = useMemo(() => getLogisticsOrders(filters), [filters])
   const { sorted: rows, sort, toggle } = useSort(rowsRaw, {
@@ -96,9 +99,9 @@ export function LogisticsStatusList() {
     incoterm: (o) => o.incoterm ?? '',
     status: (o) => o.status,
     delay: (o) => arrivalDelayDays(o) ?? -99999,
+    actualRfd: (o) => latestActualRfd(o.items) ?? '',
   })
   const { page, pageCount, pageRows, setPage, total, pageSize } = usePagination(rows, 10)
-  const fobRequests = useMemo(() => deriveImportFobRequests(), [])
   const canEdit = can(user, 'editAny')
 
   // MO-group sizes across the currently-visible rows — drives the "shares an
@@ -126,6 +129,8 @@ export function LogisticsStatusList() {
     { header: 'Origin', value: (o) => (o.orderType === 'Export' ? o.originCountry ?? '' : `${o.originCity}, ${o.originProvince}`) },
     { header: 'Status', value: (o) => o.status },
     { header: 'Arrival delay (days)', value: (o) => arrivalDelayDays(o) ?? '' },
+    { header: 'Planned RFD', value: (o) => latestPlannedRfd(o.items) ?? '' },
+    { header: 'Actual RFD', value: (o) => latestActualRfd(o.items) ?? '' },
     { header: 'Gate Out Date', value: (o) => o.gateOutDate ?? '' },
     { header: 'Sent to Trucking', value: (o) => (o.sentToTrucking ? 'Yes' : 'No') },
   ]
@@ -148,6 +153,16 @@ export function LogisticsStatusList() {
         </div>
       </div>
 
+      <SegmentedControl
+        options={[{ value: 'orders' as const, label: 'Orders' }, { value: 'services' as const, label: 'Service Jobs' }]}
+        value={tab}
+        onChange={setTab}
+      />
+
+      {tab === 'services' ? (
+        <ServiceJobsTab />
+      ) : (
+      <>
       <FilterBar
         search={{
           value: filters.search ?? '',
@@ -203,6 +218,7 @@ export function LogisticsStatusList() {
                 <SortHeader label="Incoterm" sortKey="incoterm" sort={sort} onToggle={toggle} />
                 <SortHeader label="Status" sortKey="status" sort={sort} onToggle={toggle} />
                 <SortHeader label="Arrival delay" sortKey="delay" sort={sort} onToggle={toggle} align="right" />
+                <SortHeader label="Actual RFD" sortKey="actualRfd" sort={sort} onToggle={toggle} />
                 <th className="px-3 py-2 text-left">Sent to Trucking</th>
                 <th className="px-3 py-2 text-left"></th>
               </tr>
@@ -255,6 +271,15 @@ export function LogisticsStatusList() {
                     <td className="px-3 py-2 text-right">
                       <DelayCell days={arrivalDelayDays(o)} settled={!!o.actualArrivalDate} />
                     </td>
+                    <td className="px-3 py-2 text-[13px] tabular-nums">
+                      {(() => {
+                        const actual = latestActualRfd(o.items)
+                        const planned = latestPlannedRfd(o.items)
+                        if (actual) return <span>{actual}</span>
+                        if (planned) return <span className="text-muted" title="Planned RFD — not yet actualised">{planned} <span className="text-[10px]">(planned)</span></span>
+                        return <span className="text-muted">—</span>
+                      })()}
+                    </td>
                     <td className="px-3 py-2">
                       <TruckingHandoffBadge order={o} />
                     </td>
@@ -285,58 +310,7 @@ export function LogisticsStatusList() {
       )}
       <Pagination page={page} pageCount={pageCount} total={total} pageSize={pageSize} onPage={setPage} />
 
-      {/* Open Requests — Import FOB (read-only; the record lives in Imports) */}
-      {fobRequests.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-semibold">Open Requests — Import FOB</h3>
-            <span className="rounded-full bg-[var(--color-watch-bg)] px-2 py-0.5 text-[11px] text-[var(--color-watch)]">{fobRequests.length}</span>
-            <span className="text-xs text-muted">FOB imports needing shipping &amp; clearing-agent arrangement — managed in Imports Status</span>
-          </div>
-          <div className="overflow-x-auto rounded-xl border border-line bg-surface [scrollbar-width:auto]">
-            <table className="w-full min-w-[900px] text-sm">
-              <thead className="bg-canvas-alt text-xs text-muted">
-                <tr>
-                  <th className="px-3 py-2 text-left">Source consignment</th>
-                  <th className="px-3 py-2 text-left">Branch</th>
-                  <th className="px-3 py-2 text-left">Items</th>
-                  <th className="px-3 py-2 text-left">Origin</th>
-                  <th className="px-3 py-2 text-left">Status</th>
-                  <th className="px-3 py-2 text-left">Clearing agent</th>
-                  <th className="px-3 py-2 text-left"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {fobRequests.map((r) => (
-                  <tr
-                    key={r.systemId}
-                    className="cursor-pointer border-t border-line hover:bg-canvas-alt"
-                    onClick={() => navigate(`/imports-status/${r.sourceRef}`)}
-                  >
-                    <td className="px-3 py-2 font-semibold tabular-nums">{r.sourceRef}</td>
-                    <td className="px-3 py-2">{r.customerName}</td>
-                    <td className="px-3 py-2">{r.itemSummary}</td>
-                    <td className="px-3 py-2 text-muted">{r.origin}</td>
-                    <td className="px-3 py-2"><StatusBadge label={r.status} /></td>
-                    <td className="px-3 py-2 text-[13px]">
-                      {r.needsClearingAgent
-                        ? <span className="rounded border border-[var(--color-watch)]/30 bg-[var(--color-watch-bg)] px-1.5 py-0.5 text-[11px] text-[var(--color-watch)]">Needs agent</span>
-                        : <span className="text-muted">Assigned</span>}
-                    </td>
-                    <td className="px-3 py-2">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); navigate(`/imports-status/${r.sourceRef}`) }}
-                        className="rounded border border-line px-2.5 py-1 text-[11px] hover:border-muted"
-                      >
-                        Open in Imports
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+      </>
       )}
     </div>
   )
