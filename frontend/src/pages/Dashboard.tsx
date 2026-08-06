@@ -226,12 +226,12 @@ export function Dashboard() {
           <div className="mt-2">
             <TrendLine data={trend} x="week" y="purchase_value" height={210} />
           </div>
-          <p className="mt-1 text-xs text-muted">PKR millions per week · last {rangeWeeks} weeks</p>
+          <p className="mt-1 text-xs font-semibold text-ink">PKR millions per week · last {rangeWeeks} weeks</p>
         </Panel>
 
         <Panel className="p-5 lg:col-span-1">
           <div className="mb-4 flex items-center justify-between">
-            <p className="text-sm font-semibold text-ink">Attention Required</p>
+            <p className="text-sm font-bold text-navy">Attention Required</p>
             <span className="flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold"
               style={{ backgroundColor: colors.riskBg, color: colors.risk }}>
               {alerts.length}
@@ -276,7 +276,7 @@ export function Dashboard() {
       <div className="grid gap-5 lg:grid-cols-3">
         <Panel className="p-5 lg:col-span-2">
           <div className="mb-4 flex items-center justify-between">
-            <p className="text-sm font-semibold text-ink">Insights</p>
+            <p className="text-sm font-bold text-navy">Insights</p>
             <SegmentedControl options={INSIGHT_TABS} value={insightTab} onChange={setInsightTab} variant="ghost" />
           </div>
           <div key={insightTab} className="animate-fade-in-up">
@@ -288,7 +288,7 @@ export function Dashboard() {
         </Panel>
 
         <Panel className="p-5 lg:col-span-1">
-          <p className="mb-4 text-sm font-semibold text-ink">Status Split</p>
+          <p className="mb-4 text-sm font-bold text-navy">Status Split</p>
           <Donut labels={statusSplit.labels} values={statusSplit.values} height={300} />
         </Panel>
       </div>

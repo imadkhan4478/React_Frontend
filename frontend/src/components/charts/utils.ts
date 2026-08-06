@@ -47,7 +47,7 @@ export function axisLabel(unit: string | undefined, axis: 'x' | 'y', color: stri
     position: axis === 'y' ? ('insideLeft' as const) : ('insideBottom' as const),
     angle: axis === 'y' ? -90 : 0,
     offset: axis === 'y' ? 0 : -4,
-    style: { fill: color, fontSize: 11, fontWeight: 600, textAnchor: 'middle' as const },
+    style: { fill: color, fontSize: 12, fontWeight: 700, textAnchor: 'middle' as const },
   }
 }
 

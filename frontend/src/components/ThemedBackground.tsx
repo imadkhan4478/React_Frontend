@@ -81,7 +81,7 @@ const DULL_FILTER = 'saturate(0.65) brightness(0.94) contrast(0.97)'
  * module the same "photo behind glass cards" look Dashboard and
  * Logistics have. */
 const MODULE_PHOTOS: Partial<Record<PageKey | 'login', ModulePhotoSet>> = {
-  dashboard: { light: dashboardLight, dark: dashboardDark, scrim: { light: 0.46, dark: 0.52 }, dull: true },
+  dashboard: { light: dashboardLight, dark: dashboardDark, scrim: DENSE_SCRIM, dull: true },
   logistics: { light: logisticsLight, dark: logisticsDark, scrim: DENSE_SCRIM, dull: true },
   imports: { light: importsLight, dark: importsDark, scrim: DENSE_SCRIM, dull: true },
   purchases: { light: purchasesLight, dark: purchasesDark, scrim: DENSE_SCRIM, dull: true },

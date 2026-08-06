@@ -4,6 +4,7 @@ import { DataTable } from '@/components/DataTable'
 import { Donut } from '@/components/charts/Donut'
 import { askQadriBot, SUGGESTED_QUERIES, type BotAnswer } from '@/lib/mockData/assistant'
 import logo from '@/assets/qadri_logo_transparent.png'
+import qgLogo from '@/assets/qg_logo.png'
 import { cn } from '@/lib/utils'
 
 const BOT_NAME = 'QG-IRS'
@@ -124,9 +125,12 @@ export function Assistant() {
     return (
       <div className="flex h-[calc(100vh-4rem)] flex-col items-center justify-center px-4">
         <div className="animate-fade-in-up w-full max-w-xl text-center">
-          <div className="mx-auto mb-5 w-fit rounded-2xl shadow-lg" style={{ boxShadow: '0 10px 28px rgba(79,70,229,.28)' }}>
-            <BotAvatar size={64} />
-          </div>
+          <img
+            src={qgLogo}
+            alt="Qadri Group"
+            className="mx-auto mb-6 h-40 w-40 object-contain sm:h-48 sm:w-48"
+            style={{ filter: 'drop-shadow(0 18px 32px rgba(79,70,229,.35))' }}
+          />
           <h1 className="font-display text-3xl font-extrabold tracking-tight text-navy">{BOT_NAME}</h1>
           <p className="mt-2 text-sm text-muted">Purchases, inventory, imports, or logistics — in plain language.</p>
 
